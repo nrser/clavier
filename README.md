@@ -1,2 +1,4 @@
-# clavier
-A light and not-so-bright CLI framework for Python
+clavier
+==============================================================================
+
+A light and not-so-bright CLI framework for Python.
