@@ -13,6 +13,8 @@ import sys
 from . import log as logging, err, io
 from .arg_par import ArgumentParser
 
+LOG = logging.getLogger(__name__)
+
 class Sesh:
     """\
     A CLI app session
@@ -48,14 +50,14 @@ class Sesh:
         return self
 
     @log.inject
-    def parse(self, log, *args, **kwds) -> Sesh:
+    def parse(self, *args, log=LOG, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
         logging.set_level(self.pkg_name, verbosity=self.args.verbose)
         log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
     @log.inject
-    def run(self, log) -> int:
+    def run(self, log=LOG) -> int:
         if not hasattr(self.args, "__target__"):
             log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")

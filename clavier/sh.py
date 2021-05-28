@@ -53,6 +53,7 @@ def _transform_value(value, rel_to):
     except:
         return str(value)
 
+
 def _iter_opt(
     flag: str,
     value: Any,
@@ -114,7 +115,7 @@ def flat_opts(
     Examples:
 
     1.  Short opt with a list (or tuple) value:
-        
+
         >>> list(flat_opts({'x': [1, 2, 3]}))
         ['-x', '1', '-x', '2', '-x', '3']
 
@@ -165,7 +166,10 @@ def flat_args(
             )
         elif isinstance(arg, Sequence):
             yield from flat_args(
-                arg, opts_style=opts_style, opts_sort=opts_sort, rel_to=rel_to,
+                arg,
+                opts_style=opts_style,
+                opts_sort=opts_sort,
+                rel_to=rel_to,
             )
         else:
             yield str(arg)
@@ -218,8 +222,8 @@ def get(*args, chdir=None, format=None, encoding="utf-8", **opts) -> Any:
 
 @LOG.inject
 def run(
-    log,
     *args,
+    log=LOG,
     chdir: Union[None, Path, str] = None,
     check: bool = True,
     encoding: str = "utf-8",
@@ -266,10 +270,11 @@ def run(
             cmd, check=check, cwd=chdir, encoding=encoding, input=input, **opts
         )
 
-
+@LOG.inject
 def replace(
     exe: str,
     *args,
+    log=LOG,
     env: Optional[Mapping] = None,
     chdir: Optional[Union[str, Path]] = None,
     opts_style: TOptsStyle = DEFAULT_OPTS_STYLE,
@@ -280,7 +285,7 @@ def replace(
         console.file.flush()
     proc_name = basename(exe)
     cmd = flatten_args((exe, *args), opts_style=opts_style, opts_sort=opts_sort)
-    LOG.getChild("exec").debug(
+    log.debug(
         "Replacing current process with system command...",
         cmd=cmd,
         env=env,

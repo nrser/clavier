@@ -40,30 +40,9 @@ class LogGetter:
     def inject(self, fn):
         @wraps(fn)
         def log_inject_wrapper(*args, **kwds):
-            if len(args) == 0:
-                return fn(self.getChild(fn.__name__), **kwds)
-
-            # See if this is a method call, where we need to deal with the
-            # _second_ argument
-            insert_at = 1 if is_unbound_method_of(fn, args[0]) else 0
-
-            pre_args = args[0:insert_at]
-            post_args = args[insert_at:]
-
-            if len(post_args) == 0:
-                # There are no regular args, so there can't be an overriding
-                # logger given as the first regular arg.
-                #
-                # Inject as the (only) regular arg
-                return fn(*pre_args, self.getChild(fn.__name__), **kwds)
-
-            if isinstance(post_args[0], (self.__class__, logging.Logger)):
-                # The first regular arg is a `LogGetter` or `logging.Logger`,
-                # so no injection this time
+            if "log" in kwds:
                 return fn(*args, **kwds)
-
-            # And finally, the first regular arg is not an logger override,
-            # so inject in there and be done with it
-            return fn(*pre_args, self.getChild(fn.__name__), *post_args, **kwds)
+            else:
+                return fn(*args, log=self.getChild(fn.__name__), **kwds)
 
         return log_inject_wrapper
