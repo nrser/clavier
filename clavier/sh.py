@@ -18,33 +18,6 @@ DEFAULT_OPTS_STYLE: TOptsStyle = "="
 DEFAULT_OPTS_SORT = True
 
 
-@overload
-def _path_for(path: _TPath, optional: bool = False) -> Path:
-    pass
-
-
-@overload
-def _path_for(path: None, *, optional: Literal[True] = True) -> None:
-    pass
-
-
-@overload
-def _path_for(path: _TPath, *, optional: Literal[True] = True) -> Path:
-    pass
-
-
-def _path_for(path, *, optional=False):
-    if path is None:
-        if optional is True:
-            return None
-        raise TypeError(
-            "`path` may not be `None` unless `optional=True` is given"
-        )
-    if isinstance(path, Path):
-        return path
-    return Path(path)
-
-
 def _transform_value(value, rel_to):
     if rel_to is None or not isinstance(value, Path):
         return value
@@ -190,19 +163,34 @@ def prepare(
 
 
 # pylint: disable=redefined-builtin
-def get(*args, chdir=None, format=None, encoding="utf-8", **opts) -> Any:
-    log = LOG.getChild("get")
-
+@LOG.inject
+def get(
+    *args,
+    log=LOG,
+    chdir: Union[None, Path, str] = None,
+    encoding: str = "utf-8",
+    opts_style: TOptsStyle = DEFAULT_OPTS_STYLE,
+    opts_sort: bool = DEFAULT_OPTS_SORT,
+    rel_paths: bool = False,
+    format: Optional[str] = None,
+    **opts
+) -> Any:
     if isinstance(chdir, Path):
         chdir = str(chdir)
 
-    cmd = flatten_args(args)
+    cmd = prepare(
+        args,
+        opts_style=opts_style,
+        opts_sort=opts_sort,
+        chdir=chdir,
+        rel_paths=rel_paths,
+    )
 
     log.debug(
         "Getting system command output...",
-        cmd=fmt_cmd(cmd),
+        cmd=cmd,
         chdir=chdir,
-        fmt=fmt,
+        format=format,
         encoding=encoding,
         **opts,
     )
@@ -243,9 +231,6 @@ def run(
 
     if isinstance(chdir, Path):
         chdir = str(chdir)
-
-    if log is None:
-        log = LOG.getChild("get")
 
     log.info(
         "Running system command...",
