@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 from typing import (
+    Any,
+    Dict,
     Union,
     Callable,
     Optional,
@@ -14,6 +16,25 @@ from . import log as logging, err, io
 from .arg_par import ArgumentParser
 
 LOG = logging.getLogger(__name__)
+
+
+# NOTE  This tookvery little to write, and works for the moment, but it relies
+#       on a bunch of sketch things (beyond being hard to read and understand
+#       quickly):
+#
+#       1.  All values that are callable are default getters
+#       2.  Order arguments are added to the `ArgumentParser` providing `values`
+#           (it's `.args`) is the order we end up iterating in here. Otherwise
+#           there's no definition of the iter-dependency chains.
+#       3.  Nothing else messes with the `values` reference we're mutating
+#
+def _resolve_default_getters(values: Dict[str, Any]) -> None:
+    for key in values:
+        if callable(values[key]):
+            values[key] = values[key](
+                **{k: v for k, v in values.items() if not callable(v)}
+            )
+
 
 class Sesh:
     """\
@@ -70,6 +91,9 @@ class Sesh:
                 del kwds[key]
         # And the `__target__` that holds the target function
         del kwds["__target__"]
+
+        # Resolve default getters
+        _resolve_default_getters(kwds)
 
         # pylint: disable=broad-except
         try:
