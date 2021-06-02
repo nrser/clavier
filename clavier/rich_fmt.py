@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import *
 import re as _re
 import shutil
-from gettext import gettext as _
 
 from argparse import (
     SUPPRESS,
@@ -16,12 +15,8 @@ from argparse import (
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.console import RenderGroup
-from rich.panel import Panel
-from rich.style import Style
 from rich.markdown import Markdown
 from rich.table import Table
-from rich.segment import Segment
-from rich.containers import Renderables
 
 from . import io, log as logging
 
@@ -29,6 +24,7 @@ LOG = logging.getLogger(__name__)
 
 MIN_WIDTH = 64
 ARG_INVOCATION_RATIO = 0.33
+
 
 class RichFormatter:
     """Formatter for `argparse.ArgumentParser` using `rich`.
@@ -86,10 +82,9 @@ class RichFormatter:
 
         def format_help(self):
             raise "HERE"
-            return self.renderable
+            # return self.renderable
 
-
-    _prog: Any # TODO Type?
+    _prog: Any  # TODO Type?
     _root_section: _Section
     _current_section: _Section
     _width: int
@@ -101,10 +96,9 @@ class RichFormatter:
         self._current_section = self._root_section
 
         if width is None:
-            self._width = max((
-                shutil.get_terminal_size().columns - 2,
-                MIN_WIDTH
-            ))
+            self._width = max(
+                (shutil.get_terminal_size().columns - 2, MIN_WIDTH)
+            )
         else:
             self._width = width
 
@@ -146,7 +140,6 @@ class RichFormatter:
                 self.start_section(prefix)
                 self._add_item(self._format_usage, args)
                 self.end_section()
-
 
     def add_arguments(self, actions):
         self._add_item(self._format_actions, [actions])
@@ -217,6 +210,7 @@ class RichFormatter:
 
             # if there are any sub-actions, add their help as well
             if hasattr(action, "_get_subactions"):
+                # pylint: disable=protected-access
                 contents.append(
                     self._format_actions(list(action._get_subactions()))
                 )
@@ -230,6 +224,7 @@ class RichFormatter:
         group_actions = set()
         inserts = {}
         for group in groups:
+            # pylint: disable=protected-access
             try:
                 start = actions.index(group._group_actions[0])
             except ValueError:
@@ -317,11 +312,11 @@ class RichFormatter:
         text = " ".join([item for item in parts if item is not None])
 
         # clean up separators for mutually exclusive groups
-        open = r"[\[(]"
-        close = r"[\])]"
-        text = _re.sub(r"(%s) " % open, r"\1", text)
-        text = _re.sub(r" (%s)" % close, r"\1", text)
-        text = _re.sub(r"%s *%s" % (open, close), r"", text)
+        open_s = r"[\[(]"
+        close_s = r"[\])]"
+        text = _re.sub(r"(%s) " % open_s, r"\1", text)
+        text = _re.sub(r" (%s)" % close_s, r"\1", text)
+        text = _re.sub(r"%s *%s" % (open_s, close_s), r"", text)
         text = _re.sub(r"\(([^|]*)\)", r"\1", text)
         text = text.strip()
 
@@ -351,8 +346,8 @@ class RichFormatter:
                     positionals.append(action)
 
             # build full usage string
-            format = self._format_actions_usage
-            action_usage = format(optionals + positionals, groups)
+            format_fn = self._format_actions_usage
+            action_usage = format_fn(optionals + positionals, groups)
             usage = " ".join([s for s in [prog, action_usage] if s])
 
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
@@ -365,6 +360,7 @@ class RichFormatter:
 
     def _iter_subactions(self, action):
         try:
+            # pylint: disable=protected-access
             get_subactions = action._get_subactions
         except AttributeError:
             pass
@@ -380,13 +376,13 @@ class RichFormatter:
         else:
             result = default_metavar
 
-        def format(tuple_size):
+        def formater(tuple_size):
             if isinstance(result, tuple):
                 return result
             else:
                 return (result,) * tuple_size
 
-        return format
+        return formater
 
     def _format_args(self, action, default_metavar):
         get_metavar = self._metavar_formatter(action, default_metavar)
@@ -451,4 +447,4 @@ class RichFormatter:
         return Markdown(self._get_help_string(action) % params)
 
     def _get_help_string(self, action):
-        return action.help
+        return str(action.help)
