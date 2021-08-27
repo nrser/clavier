@@ -7,7 +7,7 @@ with open(Path(__file__).parent / "README.md", "r") as fh:
 setuptools.setup(
     name="clavier",
     version="0.0.1",
-    author="Expanded Performance Inc",
+    author="Neil Souza, Expanded Performance Inc",
     author_email="src@expand.live",
     description="A light and not-so-bright CLI framework for Python",
     long_description=long_description,
