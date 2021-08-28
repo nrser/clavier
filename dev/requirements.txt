@@ -1,5 +1,10 @@
 -e .
 
+# Building and publishing
+setuptools
+wheel
+twine
+
 # VSCode / formatting stuff
 black==20.8b1 # No idea how this versioning crap works
 pylint>=2.6.0,<3.0
