@@ -6,7 +6,7 @@ with open(Path(__file__).parent / "README.md", "r") as fh:
 
 setuptools.setup(
     name="clavier",
-    version="0.0.1",
+    version="0.1.0",
     author="Neil Souza, Expanded Performance Inc",
     author_email="src@expand.live",
     description="A light and not-so-bright CLI framework for Python",
@@ -18,7 +18,10 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: POSIX",
     ],
-    python_requires='>=3.9',
+    # NOTE  This is a guess. I haven't explored using old Python versions. Core
+    #       support 3.8 and 3.9. As of writing (2021-08-28) 3.6 is the oldest
+    #       Python supported, and it has `typing`, so I've put that.
+    python_requires='>=3.6',
     install_requires=[
         # Pretty terminal printing
         "rich>=9.13.0,<10",
