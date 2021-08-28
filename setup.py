@@ -8,11 +8,11 @@ setuptools.setup(
     name="clavier",
     version="0.1.0",
     author="Neil Souza, Expanded Performance Inc",
-    author_email="src@expand.live",
+    author_email="neil@neilsouza.com",
     description="A light and not-so-bright CLI framework for Python",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/experf/clavier",
+    url="https://github.com/nrser/clavier",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
