@@ -17,6 +17,8 @@ LOG = logging.getLogger(__name__)
 DEFAULT_OPTS_STYLE: TOptsStyle = "="
 DEFAULT_OPTS_SORT = True
 
+Result = subprocess.CompletedProcess
+
 
 def _transform_value(value, rel_to):
     if rel_to is None or not isinstance(value, Path):
@@ -220,7 +222,7 @@ def run(
     opts_sort: bool = DEFAULT_OPTS_SORT,
     rel_paths: bool = False,
     **opts,
-) -> None:
+) -> subprocess.CompletedProcess:
     cmd = prepare(
         args,
         opts_style=opts_style,
@@ -242,7 +244,7 @@ def run(
 
     if isinstance(input, Path):
         with input.open("r", encoding="utf-8") as file:
-            subprocess.run(
+            return subprocess.run(
                 cmd,
                 check=check,
                 cwd=chdir,
@@ -251,9 +253,22 @@ def run(
                 **opts,
             )
     else:
-        subprocess.run(
+        return subprocess.run(
             cmd, check=check, cwd=chdir, encoding=encoding, input=input, **opts
         )
+
+@LOG.inject
+def test(*args, **kwds) -> bool:
+    """\
+    Run a command and return whether or not it suceeds.
+
+    >>> test("true", shell=True)
+    True
+
+    >>> test("false", shell=True)
+    False
+    """
+    return run(*args, check=False, **kwds).returncode == 0
 
 @LOG.inject
 def replace(
