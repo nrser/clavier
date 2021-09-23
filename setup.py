@@ -18,10 +18,8 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: POSIX",
     ],
-    # NOTE  This is a guess. I haven't explored using old Python versions. Core
-    #       support 3.8 and 3.9. As of writing (2021-08-28) 3.6 is the oldest
-    #       Python supported, and it has `typing`, so I've put that.
-    python_requires='>=3.6',
+    # We use typing.Literal, which is 3.8+
+    python_requires=">=3.8",
     install_requires=[
         # Pretty terminal printing
         "rich>=9.13.0,<10",
