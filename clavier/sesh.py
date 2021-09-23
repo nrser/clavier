@@ -51,7 +51,7 @@ class Sesh:
         self: Sesh,
         pkg_name: str,
         description: Union[str, Path],
-        subparser_hook: Callable[[argparse._SubParsersAction], None]
+        subparser_hook: Callable[[argparse._SubParsersAction], None],
     ):
         self._args = None
         self.pkg_name = pkg_name
@@ -135,11 +135,9 @@ class Sesh:
                     f"{type(error).__name__}: {error}\n\n"
                     "Add `--backtrace` to print stack.",
                 )
-            # sys.exit(1)
             return 1
 
-        # sys.exit(0)
-        return 0
+        return result.return_code
 
     def exec(self):
         sys.exit(self.run())

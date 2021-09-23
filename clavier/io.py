@@ -61,7 +61,7 @@ def header(text, level=1):
     yield NEWLINE
 
 
-def code(code, lexer_name, code_width: Optional[int]=80, **opts):
+def code(code, lexer_name, code_width: Optional[int] = 80, **opts):
     return Syntax(code, lexer_name, code_width=code_width, **opts)
 
 
@@ -83,10 +83,12 @@ def fmt_path(path: Path) -> str:
     except:
         return str(path)
 
-def fmt_cmd(cmd, *, code_width: int=80, **opts):
+
+def fmt_cmd(cmd, *, code_width: int = 80, **opts):
     if isinstance(cmd, (list, tuple)):
         cmd = txt.fmt_cmd(cmd, code_width=code_width)
     return code(cmd, "shell", **opts)
+
 
 def fmt(x):
     if isinstance(x, Path):
@@ -194,8 +196,9 @@ class View:
 
         return builder.file_data_text
 
-    def __init__(self, data, console=OUT):
+    def __init__(self, data, *, return_code: int = 0, console: Console = OUT):
         self.data = data
+        self.return_code = return_code
         self.console = console
 
     def print(self, *args, **kwds):
@@ -232,6 +235,13 @@ class View:
         """
         render_to_console(self.data, console=self.console)
 
-if __name__ == '__main__':
+
+class ErrorView(View):
+    def __init__(self, data, *, return_code: int = 1, console: Console = ERR):
+        super().__init__(data, return_code=return_code, console=console)
+
+
+if __name__ == "__main__":
     import doctest
+
     doctest.testmod()

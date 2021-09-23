@@ -3,13 +3,34 @@ from typing import *
 import argparse
 from pathlib import Path
 import os
+from textwrap import dedent
 
 from rich.console import Console
 
 from argcomplete import autocomplete
 
-from . import io, dyn, log as logging
+from . import io, dyn, err, log as logging
 from .rich_fmt import RichFormatter
+
+
+class HelpErrorView(io.ErrorView):
+    def render_rich(self):
+        io.render_to_console(self.data.format_rich_help())
+
+    def render_json(self):
+        raise err.UserError("Help not available as JSON")
+
+
+class _SubParsersAction(argparse._SubParsersAction):
+    """\
+    Extended to use help as description if the later is missing.
+    """
+
+    def add_parser(self, name, **kwds):
+        if "help" in kwds and "description" not in kwds:
+            kwds["description"] = kwds["help"]
+        return super().add_parser(name, **kwds)
+
 
 class ArgumentParser(argparse.ArgumentParser):
     @classmethod
@@ -22,18 +43,33 @@ class ArgumentParser(argparse.ArgumentParser):
         else:
             raise TypeError("Expected `pathlib.Path` or `str`")
 
-        parser = cls(description=description)
+        parser = cls(
+            description=description,
+            notes=dedent(
+                """\
+                You can run
+
+                    eval "$(register-python-argcomplete %(prog)s)"
+
+                in your bash shell to enable tab-completion.
+                """
+            ),
+        )
+
         subparsers = parser.add_subparsers(help="Select a command")
         subparser_hook(subparsers)
         autocomplete(parser)
         return parser
 
-    def __init__(self, *args, target=None, view=io.View, **kwds):
-        super().__init__(
-            *args, formatter_class=RichFormatter, **kwds
-        )
+    def __init__(self, *args, target=None, view=io.View, notes=None, **kwds):
+        super().__init__(*args, formatter_class=RichFormatter, **kwds)
 
-        if target is not None:
+        self.notes = notes
+        self.register("action", "parsers", _SubParsersAction)
+
+        if target is None:
+            self.set_target(self.no_target)
+        else:
             self.set_target(target)
 
         self.add_argument(
@@ -62,6 +98,9 @@ class ArgumentParser(argparse.ArgumentParser):
             default=view.DEFAULT_FORMAT,
             help=view.help(),
         )
+
+    def no_target(self):
+        return HelpErrorView(self)
 
     def env_var_name(self, name):
         return self.prog.upper() + "_" + name.upper()
@@ -97,8 +136,9 @@ class ArgumentParser(argparse.ArgumentParser):
         formatter = self._get_formatter()
 
         # usage
-        formatter.add_usage(self.usage, self._actions,
-                            self._mutually_exclusive_groups)
+        formatter.add_usage(
+            self.usage, self._actions, self._mutually_exclusive_groups
+        )
 
         # description
         formatter.start_section("description")
@@ -110,6 +150,11 @@ class ArgumentParser(argparse.ArgumentParser):
             formatter.start_section(action_group.title)
             formatter.add_text(action_group.description)
             formatter.add_arguments(action_group._group_actions)
+            formatter.end_section()
+
+        if self.notes is not None:
+            formatter.start_section("additional notes")
+            formatter.add_text(self.notes)
             formatter.end_section()
 
         # epilog
@@ -129,4 +174,3 @@ class ArgumentParser(argparse.ArgumentParser):
         else:
             console = Console(file=file)
         console.print(self.format_rich_help())
-
