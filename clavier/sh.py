@@ -198,7 +198,7 @@ def render_args(
         if isinstance(arg, (str, bytes)):
             yield arg
         elif isinstance(arg, Path):
-            yield render_path()
+            yield render_path(arg, rel_to)
         elif isinstance(arg, Mapping):
             yield from render_opts(
                 arg,
