@@ -1,6 +1,21 @@
 from __future__ import annotations
-from typing import Generator, Iterable
+from typing import Generator, Iterable, Type, Union
 import re
+from inspect import isclass, ismodule, isfunction
+
+# This is funky... but I'm not sure how else to get a reference to the module
+# class (prints as `<class 'module'>`)
+TModule = type(re)
+
+# The type of `value` that `Key.split` accepts, which is recursive
+TSplitable = Union[
+    str,
+    bytes,
+    Type,
+    TModule,
+    Iterable["TSplitable"],
+]
+
 
 class Key(tuple):
     """
@@ -48,7 +63,28 @@ class Key(tuple):
         return False
 
     @classmethod
-    def normalize(cls, value):
+    def normalize(cls, value: TSplitable) -> Generator[str, None, None]:
+        """\
+        Yield the normalized sequence of validated `Key` segment string for the
+        given `value`. As it uses `Key.split` internally, accepts:
+
+        1.  `str`
+        2.  `bytes` -- decoded with UTF-8 to `str`
+        3.  Class -- Fully qualified name (module + class name) is split (at the
+            `.` separators).
+        4.  Module -- Name is split at the `.` separators.
+        5.  `typing.Iterable` containing any of the accepted types, including
+            other iterables.
+
+        ## Raises ##
+
+        -   `ValueError` if any `str` segment does not conform to the segment
+            pattern (see `Key.SEGMENT_FORMAT`).
+        -   `TypeError` if `value` is not one of the accepted types listed above
+            (via `Key.split`).
+        -   `UnicodeDecodeError` if any element is a `bytes` instance that fails
+            to decode as a utf-8 string (via `Key.split`).
+        """
         for segment in cls.split(value):
             if cls.is_segment(segment):
                 yield segment
@@ -60,11 +96,33 @@ class Key(tuple):
                 )
 
     @classmethod
-    def split(cls, value):
+    def split(cls, value: TSplitable) -> Generator[str, None, None]:
         """\
-        Yield key segment `str`.
+        Recursively splits `value` according to `Key` semantics, yielding `str`
+        elements. Accepts:
 
-        Examples:
+        1.  `str`
+        2.  `bytes` -- decoded with UTF-8 to `str`
+        3.  Class -- Fully qualified name (module + class name) is split (at the
+            `.` separators).
+        4.  Module -- Name is split at the `.` separators.
+        5.  Function -- Full name is split by `.` separators.
+        6.  `typing.Iterable` containing any of the accepted types, including
+            other iterables.
+
+        > ## Note ##
+        >
+        > This method does _not_ validate the yielded `str` segments, it simply
+        > splits them. Validation is handled when invoked through `normalize`.
+
+        ## Raises ##
+
+        -   `TypeError` if `value` is not one of the accepted types listed
+            above.
+        -   `UnicodeDecodeError` if any element is a `bytes` instance that fails
+            to decode as a utf-8 string.
+
+        ## Examples ##
 
         Splits strings:
 
@@ -93,7 +151,7 @@ class Key(tuple):
             >>> list(Key.split(1))
             Traceback (most recent call last):
                 ...
-            TypeError: Expected str, bytes, Iterable or class, given <class 'int'>: 1
+            TypeError: Expected str, bytes, Iterable, class or module; given <class 'int'>: 1
 
         """
         # print(f"HERE {repr(value)}")
@@ -104,26 +162,53 @@ class Key(tuple):
             # that makes more sense than dotting their integers together
             #
             # This will fail if `input` is does not decode into UTF-8
-            yield from cls.normalize(value.decode("utf-8"))
+            yield from cls.split(value.decode("utf-8"))
         elif isinstance(value, Iterable):
             for v in value:
-                yield from cls.normalize(v)
-        elif hasattr(value, "__module__") and hasattr(value, "__name__"):
+                yield from cls.split(v)
+        elif isclass(value):
             # Allows you to use classes, like
             #
+            #       import what.ever
             #       cfg[what.ever.SomeClass, "default_value"]
             #       -> Key("what", "ever", "SomeClass", "default_value")
             #
             yield from cls.split((value.__module__, value.__name__))
+        elif ismodule(value):
+            # Allows you to use modules, like
+            #
+            #       import what.ever
+            #       cfg[what.ever, "default_value"]
+            #       -> Key("what", "ever", "default_value")
+            #
+            yield from cls.split(value.__name__)
+        elif isfunction(value):
+            # Allows you to use functions much the same as classes and modules
+            yield from cls.split((value.__module__, value.__qualname__))
         else:
             raise TypeError(
-                "Expected str, bytes, Iterable or class, "
+                "Expected str, bytes, Iterable, class or module; "
                 f"given {type(value)}: {repr(value)}"
             )
 
     def __new__(self, *values):
-        if len(values) == 1 and isinstance(values[0], self.__class__):
-            return values[0]
+        """\
+        Construct a `Key`.
+
+        Since keys are tuples, and tuples are immutable, an optimization is
+        performed to simply return any sole `Key` instance argument.
+        """
+        # Special-case single argument calls
+        if len(values) == 1:
+            if isinstance(values[0], self.__class__):
+                # Called with a single `Key`. Since they're immutable we just
+                # return it back.
+                return values[0]
+            else:
+                # Little touch to make it nicer to read errors when providing a
+                # single argument -- just normalize that argument, rather than
+                # a `tuple` with only one member
+                return tuple.__new__(Key, self.normalize(values[0]))
         return tuple.__new__(Key, self.normalize(values))
 
     @property
@@ -185,7 +270,7 @@ class Key(tuple):
             "Key('a', 'b', 'c')"
 
         """
-        return "Key(" + ', '.join(repr(s) for s in self) + ")"
+        return "Key(" + ", ".join(repr(s) for s in self) + ")"
 
     def __str__(self):
         """\
@@ -244,7 +329,9 @@ class Key(tuple):
         for stop in range(1, len(self)):
             yield Key(self[0:stop])
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     from pathlib import Path
     import doctest
+
     doctest.testmod()

@@ -1,20 +1,14 @@
 from __future__ import annotations
 from collections import namedtuple
-from typing import (
-    Optional,
-    Any,
-    Union,
-    Iterable,
-    Sequence,
-)
 import re
 import os
-from functools import reduce
+from typing import Any
 from sortedcontainers import SortedDict
 
 from .key import Key
 from .scope import ReadScope
 from .changeset import Changeset
+
 
 class Config:
     ENV_VAR_NAME_SUB_RE = re.compile(r"[^A-Z0-9]+")
@@ -45,11 +39,21 @@ class Config:
             except Exception:
                 return value_s
 
-    def __contains__(self, key):
-        return Key(key) in self._view
+    def __contains__(self, key: Any) -> bool:
+        try:
+            key = Key(key)
+        except Exception:
+            return False
+        return key in self._view
 
-    def __getitem__(self, key):
-        key = Key(key)
+    def __getitem__(self, key: Any) -> Any:
+        try:
+            key = Key(key)
+        except KeyError as error:
+            raise error
+        except Exception as error:
+            raise KeyError(f"Not convertible to a Key: {repr(key)}") from error
+
         if self.env_has(key):
             return self.env_get(key)
         if key in self._view:
@@ -57,16 +61,18 @@ class Config:
         for k in self._view:
             if key in k.scopes():
                 return ReadScope(base=self, key=key)
-        raise KeyError(f"Config has no key or scope {key}")
+
+        raise KeyError(f"Config has no key or scope {repr(key)}")
 
     def __getattr__(self, name):
         try:
-            key = Key(name)
-        except ValueError:
+            return self[name]
+        except AttributeError as error:
+            raise error
+        except Exception as error:
             raise AttributeError(
-                f"`{self.__class__.__name__}` has no attribute {repr(name)}"
-            )
-        return self[key]
+                f"Not convertible to a Key: {repr(name)}"
+            ) from error
 
     def __iter__(self):
         return iter(self._view)

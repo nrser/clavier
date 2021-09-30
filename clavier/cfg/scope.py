@@ -5,6 +5,7 @@ from typing import (
 
 from .key import Key
 
+
 class ReadScope:
     """\
     A small adapter providing read access to a particular scope of a Config.
@@ -14,12 +15,28 @@ class ReadScope:
         super().__setattr__("_base", base)
         super().__setattr__("_key", Key(key))
 
-    def __contains__(self, key: str) -> bool:
-        return Key(self._key, key) in self._base
+    def __contains__(self, key: Any) -> bool:
+        return key in self._base
 
     def __getattr__(self, name: str) -> Any:
-        return self._base[Key(self._key, name)]
-    __getitem__ = __getattr__
+        try:
+            return self._base[Key(self._key, name)]
+        except AttributeError as error:
+            raise error
+        except Exception as error:
+            raise AttributeError(
+                f"`{self.__class__.__name__}` has no attribute {repr(name)}"
+            ) from error
+
+    def __getitem__(self, key: Any) -> Any:
+        try:
+            return self._base[Key(self._key, key)]
+        except KeyError as error:
+            raise error
+        except Exception as error:
+            raise KeyError(
+                f"`{self.__class__.__name__}` has no key {repr(key)}"
+            ) from error
 
 
 class WriteScope(ReadScope):
@@ -30,6 +47,7 @@ class WriteScope(ReadScope):
 
     def __setattr__(self, name: str, value: Any) -> None:
         self._base[Key(self._key, name)] = value
+
     __setitem__ = __setattr__
 
     def __enter__(self) -> WriteScope:

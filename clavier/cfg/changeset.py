@@ -1,7 +1,9 @@
 from __future__ import annotations
+from typing import Any
 
 from .key import Key
 from .scope import ReadScope, WriteScope
+
 
 class Changeset:
     """\
@@ -35,12 +37,20 @@ class Changeset:
         self.changes = {}
         self.write_scope = None
 
-    def __contains__(self, key):
-        key = Key(key)
+    def __contains__(self, key: Any) -> bool:
+        try:
+            key = Key(key)
+        except Exception:
+            return False
         return key in self.changes or key in self.config
 
     def __getitem__(self, key):
-        key = Key(key)
+        try:
+            key = Key(key)
+        except KeyError as error:
+            raise error
+        except Exception as error:
+            raise KeyError(f"Not convertible to a Key: {repr(key)}") from error
 
         # 1.  See if we have a value for the key...
 
@@ -91,6 +101,8 @@ class Changeset:
         if exc_type is None and exc_value is None and traceback is None:
             self.config.update(self.changes, self.meta)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import doctest
+
     doctest.testmod()
