@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import *
+from typing import Callable, Iterable, Optional
 import argparse
 from pathlib import Path
 import os
@@ -11,6 +11,14 @@ from argcomplete import autocomplete
 
 from . import io, dyn, err, log as logging
 from .rich_fmt import RichFormatter
+from .etc import find
+
+DEFAULT_HOOK_NAMES = (
+    # Preferred name (v0.1.3+)
+    "add_parser",
+    # Legacy name (v0.1.2 and prior)
+    "add_to",
+)
 
 
 class HelpErrorView(io.ErrorView):
@@ -21,20 +29,49 @@ class HelpErrorView(io.ErrorView):
         raise err.UserError("Help not available as JSON")
 
 
-class _SubParsersAction(argparse._SubParsersAction):
+class Subparsers(argparse._SubParsersAction):
     """\
-    Extended to use help as description if the later is missing.
+    Extended to use help as description if the later is missing and handle
+    passing-down `hook_names`.
     """
 
-    def add_parser(self, name, **kwds):
+    hook_names: Iterable[str]
+
+    def __init__(self, *args, hook_names=DEFAULT_HOOK_NAMES, **kwds):
+        super().__init__(*args, **kwds)
+        self.hook_names = hook_names
+
+    def add_parser(self, name, **kwds) -> ArgumentParser:
         if "help" in kwds and "description" not in kwds:
             kwds["description"] = kwds["help"]
-        return super().add_parser(name, **kwds)
+        return super().add_parser(name, hook_names=self.hook_names, **kwds)
+
+    def add_children(self, module__name__, module__path__):
+        for module in dyn.children_modules(module__name__, module__path__):
+            _invoke_hook(module, self.hook_names, self)
+
+
+THook = Callable[[Subparsers], None]
+
+
+def _find_hook_name(obj: object, hook_names: Iterable[str]) -> Optional[str]:
+    return find(lambda hook_name: hasattr(obj, hook_name), hook_names)
+
+
+def _has_hook(obj: object, hook_names: Iterable[str]) -> bool:
+    return _find_hook_name(obj, hook_names) is not None
+
+
+def _invoke_hook(
+    obj: object, hook_names: Iterable[str], subparsers: Subparsers
+) -> None:
+    if name := _find_hook_name(obj, hook_names):
+        return getattr(obj, name)(subparsers)
 
 
 class ArgumentParser(argparse.ArgumentParser):
     @classmethod
-    def create(cls, description, subparser_hook):
+    def create(cls, description, cmds, *, hook_names=DEFAULT_HOOK_NAMES):
         if isinstance(description, Path):
             with description.open("r") as file:
                 description = file.read()
@@ -54,18 +91,40 @@ class ArgumentParser(argparse.ArgumentParser):
                 in your bash shell to enable tab-completion.
                 """
             ),
+            hook_names=hook_names,
         )
 
         subparsers = parser.add_subparsers(help="Select a command")
-        subparser_hook(subparsers)
+
+        # Figure out what was passed for the cmds...
+        if _has_hook(cmds, hook_names):
+            # An object that has one of the hook methods, call that
+            _invoke_hook(cmds, hook_names, subparsers)
+        elif isinstance(cmds, Iterable):
+            # An iterable,
+            for cmd in cmds:
+                _invoke_hook(cmd, hook_names, subparsers)
+        else:
+            # It must be a hook itself (legacy form)
+            cmds(subparsers)
+
         autocomplete(parser)
         return parser
 
-    def __init__(self, *args, target=None, view=io.View, notes=None, **kwds):
+    def __init__(
+        self,
+        *args,
+        target=None,
+        view=io.View,
+        notes=None,
+        hook_names=DEFAULT_HOOK_NAMES,
+        **kwds,
+    ):
         super().__init__(*args, formatter_class=RichFormatter, **kwds)
 
         self.notes = notes
-        self.register("action", "parsers", _SubParsersAction)
+        self.hook_names = hook_names
+        self.register("action", "parsers", Subparsers)
 
         if target is None:
             self.set_target(self.no_target)
@@ -99,6 +158,10 @@ class ArgumentParser(argparse.ArgumentParser):
             help=view.help(),
         )
 
+    def add_subparsers(self, **kwds) -> Subparsers:
+        kwds["hook_names"] = self.hook_names
+        return super().add_subparsers(**kwds)
+
     def no_target(self):
         return HelpErrorView(self)
 
@@ -126,11 +189,7 @@ class ArgumentParser(argparse.ArgumentParser):
         ]
 
     def add_children(self, module__name__, module__path__):
-        subparsers = self.add_subparsers()
-
-        for module in dyn.children_modules(module__name__, module__path__):
-            if hasattr(module, "add_to"):
-                module.add_to(subparsers)
+        self.add_subparsers().add_children(module__name__, module__path__)
 
     def format_rich_help(self):
         formatter = self._get_formatter()

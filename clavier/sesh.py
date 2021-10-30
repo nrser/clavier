@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import (
     Any,
     Dict,
+    Iterable,
     Union,
     Callable,
     Optional,
@@ -51,11 +52,11 @@ class Sesh:
         self: Sesh,
         pkg_name: str,
         description: Union[str, Path],
-        subparser_hook: Callable[[argparse._SubParsersAction], None],
+        cmds: Iterable[Any],
     ):
         self._args = None
         self.pkg_name = pkg_name
-        self.parser = ArgumentParser.create(description, subparser_hook)
+        self.parser = ArgumentParser.create(description, cmds)
 
     @property
     def args(self):

@@ -96,7 +96,7 @@ def fmt(x):
     return str(x)
 
 
-def render_to_console(data, console=OUT):
+def render_to_console(data, console: Console = OUT):
     if data is None:
         pass
     elif isinstance(data, str) or is_rich(data):
@@ -108,11 +108,27 @@ def render_to_console(data, console=OUT):
         console.print(Pretty(data))
 
 
-def render_to_string(data) -> str:
+def render_to_string(data, **kwds) -> str:
     sio = StringIO()
-    console = Console(file=sio)
+    console = Console(file=sio, **kwds)
     render_to_console(data, console)
     return sio.getvalue()
+
+
+def capture(*args, **kwds) -> str:
+    """\
+    Like `rich.console.Console.print`, but renders to a string.
+
+    Yes, this is confusing because we already had `render_to_string`, which does
+    something different -- I _think_ it's useful for intermediate renders that
+    will eventually be given to `rich.console.Console.print`?
+
+    Anyways, this behaves more like I'd expect it to as a user.
+    """
+    console = Console()
+    with console.capture() as capture:
+        console.print(*args, **kwds)
+    return capture.get()
 
 
 class RenderGrouper(UserList):
