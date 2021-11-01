@@ -7,10 +7,10 @@ import json
 from shutil import rmtree
 import shlex
 from functools import wraps
+import splatlog as logging
 
 from .cfg import CFG
 from .io import OUT, ERR, fmt, fmt_cmd
-from . import log as logging
 
 TOpts = Mapping[Any, Any]
 TOptsStyle = Literal["=", " ", ""]

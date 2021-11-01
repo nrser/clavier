@@ -6,7 +6,7 @@ with open(Path(__file__).parent / "README.md", "r") as fh:
 
 setuptools.setup(
     name="clavier",
-    version="0.1.3a0",
+    version="0.1.3a1",
     author="Neil Souza, Expanded Performance Inc",
     author_email="neil@neilsouza.com",
     description="A light and not-so-bright CLI framework for Python",
@@ -29,5 +29,7 @@ setuptools.setup(
         "mdutils>=1.3.0,<2",
         # Sorted containers used in `clavier.cfg`
         "sortedcontainers>=2.3.0,<3",
+        # Logging
+        "splatlog==0.1.0",
     ],
 )

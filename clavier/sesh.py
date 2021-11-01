@@ -12,8 +12,9 @@ from typing import (
 from pathlib import Path
 import argparse
 import sys
+import splatlog as logging
 
-from . import log as logging, err, io
+from . import err, io
 from .arg_par import ArgumentParser
 
 LOG = logging.getLogger(__name__)

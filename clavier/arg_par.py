@@ -6,10 +6,10 @@ import os
 from textwrap import dedent
 
 from rich.console import Console
-
 from argcomplete import autocomplete
+import splatlog as logging
 
-from . import io, dyn, err, log as logging
+from . import io, dyn, err
 from .rich_fmt import RichFormatter
 from .etc import find
 

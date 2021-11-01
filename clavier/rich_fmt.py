@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import *
 import re as _re
 import shutil
-
 from argparse import (
     SUPPRESS,
     OPTIONAL,
@@ -17,8 +16,9 @@ from rich.text import Text
 from rich.console import RenderGroup
 from rich.markdown import Markdown
 from rich.table import Table
+import splatlog as logging
 
-from . import io, log as logging
+from . import io
 
 LOG = logging.getLogger(__name__)
 
