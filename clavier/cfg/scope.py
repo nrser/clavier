@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import (
     Any,
+    Dict,
 )
 
 from .key import Key
@@ -15,8 +16,11 @@ class ReadScope:
         super().__setattr__("_base", base)
         super().__setattr__("_key", Key(key))
 
-    def __contains__(self, key: Any) -> bool:
-        return key in self._base
+    def __contains__(self, name: Any) -> bool:
+        try:
+            return Key(self._key, name) in self._base
+        except Exception:
+            return False
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -37,6 +41,14 @@ class ReadScope:
             raise KeyError(
                 f"`{self.__class__.__name__}` has no key {repr(key)}"
             ) from error
+
+    def to_dict(self) -> Dict:
+        prefix = str(self._key) + Key.STRING_SEPARATOR
+        dct = {}
+        for key, value in self._base.to_dict().items():
+            if key.startswith(prefix):
+                dct[key.removeprefix(prefix)] = value
+        return dct
 
 
 class WriteScope(ReadScope):

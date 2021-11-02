@@ -44,7 +44,12 @@ class Config:
             key = Key(key)
         except Exception:
             return False
-        return key in self._view
+        if key in self._view:
+            return True
+        for k in self._view:
+            if key in k.scopes():
+                return True
+        return False
 
     def __getitem__(self, key: Any) -> Any:
         try:
