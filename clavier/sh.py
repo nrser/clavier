@@ -23,7 +23,7 @@ LOG = logging.getLogger(__name__)
 DEFAULT_OPTS_STYLE: TOptsStyle = "="
 DEFAULT_OPTS_SORT = True
 
-Result = subprocess.CompletedProcess
+CompletedProcess = subprocess.CompletedProcess
 
 
 def render_path(path: Path, rel_to: Optional[Path]) -> str:
@@ -339,7 +339,7 @@ def run(
     check: bool = True,
     input: Union[None, str, bytes, Path] = None,
     **opts,
-) -> subprocess.CompletedProcess:
+) -> CompletedProcess:
     log.info(
         "Running system command...",
         cmd=fmt_cmd(cmd),
