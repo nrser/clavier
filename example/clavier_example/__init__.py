@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from clavier import Sesh, log as logging, builtin
+import splatlog as logging
+from clavier import Sesh, builtin
 
 from . import cmd
 

@@ -1,4 +1,4 @@
-from clavier import log as logging
+import splatlog as logging
 
 
 LOG = logging.getLogger(__name__)
