@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import *
 import sys
 from pathlib import Path
@@ -6,6 +7,7 @@ from functools import total_ordering
 from textwrap import dedent
 from io import StringIO
 from collections import UserList
+import os.path
 
 from rich.console import Console, ConsoleRenderable, RichCast, RenderGroup
 from rich.theme import Theme
@@ -16,8 +18,8 @@ from rich.syntax import Syntax
 
 from mdutils.mdutils import MdUtils
 
-from .cfg import CFG
-from . import etc, txt
+from clavier.cfg import CFG
+from clavier import etc, txt
 
 THEME = Theme(
     {
@@ -69,19 +71,24 @@ def is_rich(x: Any) -> bool:
     return isinstance(x, (ConsoleRenderable, RichCast))
 
 
-# @cfg.inject_kwds
-def rel(path: Path, to: Optional[Path] = None) -> Path:
-    if to is None:
-        to = CFG[rel, "to"]
-    return path.relative_to(to)
+def rel(filename: etc.TFilename) -> str:
+    path = etc.path_for(filename)
+    shortest = str(path)
+    for root in CFG[rel, "roots"].to_dict(deep=True).values():
+        if root.get("enabled", True):
+            try:
+                rel_path_s = str(etc.rel_to(path, root["path"]))
+                if prefix := root.get("prefix"):
+                    rel_path_s = prefix + rel_path_s
+                if len(rel_path_s) < len(shortest):
+                    shortest = rel_path_s
+            except:
+                pass
+    return shortest
 
 
 def fmt_path(path: Path) -> str:
-    # pylint: disable=bare-except
-    try:
-        return f"@/{rel(path)}"
-    except:
-        return str(path)
+    return rel(path)
 
 
 def fmt_cmd(cmd, *, code_width: int = 80, **opts):
@@ -90,8 +97,8 @@ def fmt_cmd(cmd, *, code_width: int = 80, **opts):
     return code(cmd, "shell", **opts)
 
 
-def fmt(x):
-    if isinstance(x, Path):
+def fmt(x: Any) -> str:
+    if isinstance(x, Path) or (isinstance(x, str) and os.path.exists(x)):
         return fmt_path(x)
     return str(x)
 
@@ -211,6 +218,10 @@ class View:
         builder.new_list([format.list_item for format in cls.formats()])
 
         return builder.file_data_text
+
+    @classmethod
+    def from_data(cls, **data):
+        return cls(data)
 
     def __init__(self, data, *, return_code: int = 0, console: Console = OUT):
         self.data = data

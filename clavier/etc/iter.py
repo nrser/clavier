@@ -39,6 +39,7 @@ TAlias = TypeVar("TAlias")
 #
 TNullResult = TypeVar("TNullResult")
 
+
 @overload
 def find(
     predicate: Callable[[TItem], Any],
@@ -158,6 +159,7 @@ def intersperse(
         yield separator
         yield item
 
+
 def interspersed(
     iterable: Iterable[TItem], separator: V
 ) -> List[Union[TItem, V]]:
@@ -170,7 +172,34 @@ def interspersed(
     """
     return list(intersperse(iterable, separator))
 
-if __name__ == '__main__':
+
+def iter_flat(itr: Iterable, skip=(str, bytes)):
+    for entry in itr:
+        if (not isinstance(entry, Iterable)) or isinstance(entry, skip):
+            yield entry
+        else:
+            yield from iter_flat(entry)
+
+
+def flatten(itr: Iterable, skip=(str, bytes), into=tuple):
+    """
+    >>> flatten(['abc', '123'])
+    ('abc', '123')
+
+    >>> flatten(['abc', ['123', 'ddd']])
+    ('abc', '123', 'ddd')
+
+    >>> flatten([1, [2, [3, [4, [5]]]]], into=list)
+    [1, 2, 3, 4, 5]
+
+    >>> flatten([{'a': 1, 'b': 2}, 'c', 3])
+    ('a', 'b', 'c', 3)
+    """
+    return into(iter_flat(itr, skip))
+
+
+if __name__ == "__main__":
     from pathlib import Path
     import doctest
+
     doctest.testmod()

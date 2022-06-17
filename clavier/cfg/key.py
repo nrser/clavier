@@ -1,19 +1,24 @@
 from __future__ import annotations
-from typing import Generator, Iterable, Type, Union
+from typing import Callable, Generator, Iterable, Type, Union
+from types import ModuleType
 import re
 from inspect import isclass, ismodule, isfunction
 
-# This is funky... but I'm not sure how else to get a reference to the module
-# class (prints as `<class 'module'>`)
-TModule = type(re)
 
-# The type of `value` that `Key.split` accepts, which is recursive
-TSplitable = Union[
+# The type of `value` that can be used to initialize a Key.
+TKeyable = Union[
+    # Split by `Key.STRING_SEPARATOR` (which is '.', like module names)
     str,
+    # Decoded as UTF-8 then treaded like `str`
     bytes,
+    # Classes, where the fully-qualified name is used like `str`
     Type,
-    TModule,
-    Iterable["TSplitable"],
+    # Modules, where the `__name__` is used like `str`
+    ModuleType,
+    # Functions, where the fully-qualified name is used like `str`
+    Callable,
+    # Iterable of any of these
+    Iterable["TKeyable"],
 ]
 
 
@@ -63,7 +68,7 @@ class Key(tuple):
         return False
 
     @classmethod
-    def normalize(cls, value: TSplitable) -> Generator[str, None, None]:
+    def normalize(cls, value: TKeyable) -> Generator[str, None, None]:
         """\
         Yield the normalized sequence of validated `Key` segment string for the
         given `value`. As it uses `Key.split` internally, accepts:
@@ -96,7 +101,7 @@ class Key(tuple):
                 )
 
     @classmethod
-    def split(cls, value: TSplitable) -> Generator[str, None, None]:
+    def split(cls, value: TKeyable) -> Generator[str, None, None]:
         """\
         Recursively splits `value` according to `Key` semantics, yielding `str`
         elements. Accepts:
@@ -257,6 +262,12 @@ class Key(tuple):
             raise IndexError("The empty Key has no root")
         return self.__class__(self[0])
 
+    def __getitem__(self, key: Union[int, slice]) -> Union[str, Key]:
+        result = super().__getitem__(key)
+        if isinstance(key, slice):
+            return Key(result)
+        return result
+
     def __repr__(self) -> str:
         """\
         Here.
@@ -272,7 +283,7 @@ class Key(tuple):
         """
         return "Key(" + ", ".join(repr(s) for s in self) + ")"
 
-    def __str__(self):
+    def __str__(self) -> str:
         """\
         Here.
 
@@ -328,6 +339,25 @@ class Key(tuple):
         """
         for stop in range(1, len(self)):
             yield Key(self[0:stop])
+
+    def starts_with(self, *prefix) -> bool:
+        """
+        >>> Key("a.b.c").starts_with("a.b")
+        True
+
+        >>> Key("a.b.c").starts_with("a", "b", "c")
+        True
+
+        >>> Key("a.b.c").starts_with("a.b.c.d")
+        False
+        """
+        prefix_key = self.__class__(*prefix)
+        if len(prefix_key) > len(self):
+            return False
+        for index, segment in enumerate(prefix_key):
+            if self[index] != segment:
+                return False
+        return True
 
 
 if __name__ == "__main__":

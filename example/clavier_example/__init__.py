@@ -3,7 +3,7 @@ from __future__ import annotations
 import splatlog as logging
 from clavier import Sesh, builtin
 
-from . import cmd
+from . import cmd, config
 
 
 def run():

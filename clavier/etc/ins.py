@@ -3,6 +3,7 @@
 from typing import Callable, Any
 from inspect import isfunction, isclass, unwrap
 
+
 def is_unbound_method_of(fn: Callable, obj: Any) -> bool:
     # We want to work with the original function, unwrapping any decorators
     unwrapped_fn = unwrap(fn)
@@ -11,7 +12,7 @@ def is_unbound_method_of(fn: Callable, obj: Any) -> bool:
     # class is
     cls = obj if isclass(obj) else obj.__class__
 
-    # Source function gotta have a name for us to find it on the class
+    # Update function gotta have a name for us to find it on the class
     if not hasattr(unwrapped_fn, "__name__"):
         return False
     attr_name = unwrapped_fn.__name__

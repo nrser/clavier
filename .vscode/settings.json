@@ -1,5 +1,9 @@
 {
   "[python]": {
     "editor.formatOnSave": true
-  }
+  },
+  "cSpell.words": [
+    "bgcolor"
+  ],
+  "cmake.configureOnOpen": false
 }
