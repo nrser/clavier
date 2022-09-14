@@ -12,15 +12,15 @@ from typing import (
 from pathlib import Path
 import argparse
 import sys
-import splatlog as logging
+import splatlog
 
 from . import err, io
 from .arg_par import ArgumentParser
 
-LOG = logging.getLogger(__name__)
+_LOG_ = splatlog.getLogger(__name__)
 
 
-# NOTE  This tookvery little to write, and works for the moment, but it relies
+# NOTE  This took very little to write, and works for the moment, but it relies
 #       on a bunch of sketch things (beyond being hard to read and understand
 #       quickly):
 #
@@ -39,11 +39,11 @@ def _resolve_default_getters(values: Dict[str, Any]) -> None:
 
 
 class Sesh:
-    """\
+    """
     A CLI app session
     """
 
-    log: logging.LogGetter = logging.getLogger(__name__, "Sesh")
+    _LOG_ = splatlog.getLogger(__name__, "Sesh")
 
     pkg_name: str
     parser: ArgumentParser
@@ -68,19 +68,41 @@ class Sesh:
     def is_backtracing(self) -> bool:
         return self.parser.is_backtracing(self.pkg_name, self.args)
 
-    def setup(self: Sesh, log_level: logging.TLevel) -> Sesh:
-        logging.setup(self.pkg_name, log_level)
+    def setup(
+        self: Sesh, log_level: Optional[splatlog.TLevelSetting] = None
+    ) -> Sesh:
+        # Setup splat logging for Clavier itself, as a _library_, which will
+        # result in it getting a higher (less logged) default logging level
+        splatlog.setup(
+            splatlog.root_name(__name__),
+            module_type=splatlog.ModuleType.LIB,
+        )
+
+        # Setup splat logging for the package that will be using Clavier, as
+        # an _application_, which will result in a lower (more logged) default
+        # logging level
+        splatlog.setup(
+            self.pkg_name,
+            level=log_level,
+            module_type=splatlog.ModuleType.APP,
+        )
+
         return self
 
-    @log.inject
-    def parse(self, *args, log=LOG, **kwds) -> Sesh:
+    @_LOG_.inject
+    def parse(self, *args, log=_LOG_, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
-        logging.set_level(self.pkg_name, verbosity=self.args.verbose)
+
+        app_level, lib_level = splatlog.levels_for_verbosity(self.args.verbose)
+
+        splatlog.set_level(splatlog.root_name(__name__), lib_level)
+        splatlog.set_level(self.pkg_name, app_level)
+
         log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
-    @log.inject
-    def run(self, log=LOG) -> int:
+    @_LOG_.inject
+    def run(self, log=_LOG_) -> int:
         if not hasattr(self.args, "__target__"):
             log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")
@@ -106,7 +128,7 @@ class Sesh:
         except Exception as error:
             if self.is_backtracing():
                 log.error(
-                    "[holup]Terminting due to unhandled exception[/holup]...",
+                    "[holup]Terminating due to unhandled exception[/holup]...",
                     exc_info=True,
                 )
             else:
