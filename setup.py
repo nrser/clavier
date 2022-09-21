@@ -22,7 +22,7 @@ setuptools.setup(
     python_requires=">=3.8",
     install_requires=[
         # Pretty terminal printing
-        "rich>=9.13.0,<10",
+        "rich>=9.13.0",
         # Automatic argument completion for `builtins.argparse`
         "argcomplete>=1.12.1,<2",
         # Used for _creating_ Markdown, believe it or not
