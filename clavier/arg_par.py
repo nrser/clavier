@@ -147,6 +147,7 @@ class ArgumentParser(argparse.ArgumentParser):
         self.add_argument(
             "-V",
             "--verbose",
+            default=0,
             action="count",
             help="Make noise.",
         )

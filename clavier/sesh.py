@@ -73,19 +73,12 @@ class Sesh:
     ) -> Sesh:
         # Setup splat logging for Clavier itself, as a _library_, which will
         # result in it getting a higher (less logged) default logging level
-        splatlog.setup(
-            splatlog.root_name(__name__),
-            module_type=splatlog.ModuleType.LIB,
-        )
+        splatlog.setup(splatlog.root_name(__name__), "lib")
 
         # Setup splat logging for the package that will be using Clavier, as
         # an _application_, which will result in a lower (more logged) default
         # logging level
-        splatlog.setup(
-            self.pkg_name,
-            level=log_level,
-            module_type=splatlog.ModuleType.APP,
-        )
+        splatlog.setup(self.pkg_name, "app")
 
         return self
 
@@ -93,10 +86,7 @@ class Sesh:
     def parse(self, *args, log=_LOG_, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
 
-        app_level, lib_level = splatlog.levels_for_verbosity(self.args.verbose)
-
-        splatlog.set_level(splatlog.root_name(__name__), lib_level)
-        splatlog.set_level(self.pkg_name, app_level)
+        splatlog.setVerbosity(self._args.verbose)
 
         log.debug("Parsed arguments", **self._args.__dict__)
         return self
