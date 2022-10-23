@@ -68,9 +68,7 @@ class Sesh:
     def is_backtracing(self) -> bool:
         return self.parser.is_backtracing(self.pkg_name, self.args)
 
-    def setup(
-        self: Sesh, log_level: Optional[splatlog.TLevelSetting] = None
-    ) -> Sesh:
+    def setup(self: Sesh, log_level: Optional[splatlog.Level] = None) -> Sesh:
         # Setup splat logging for Clavier itself, as a _library_, which will
         # result in it getting a higher (less logged) default logging level
         splatlog.setup(splatlog.root_name(__name__), "lib")
