@@ -7,7 +7,7 @@ import json
 from shutil import rmtree
 import shlex
 from functools import wraps
-import splatlog as logging
+import splatlog
 
 from .cfg import CFG
 from .io import OUT, ERR, fmt, fmt_cmd
@@ -19,7 +19,7 @@ _TPath = Union[Path, str]
 
 
 CONFIG = CFG.clavier.sh
-LOG = logging.getLogger(__name__)
+LOG = splatlog.get_logger(__name__)
 DEFAULT_OPTS_STYLE: TOptsStyle = "="
 DEFAULT_OPTS_SORT = True
 

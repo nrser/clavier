@@ -7,7 +7,7 @@ from textwrap import dedent
 
 from rich.console import Console
 from argcomplete import autocomplete
-import splatlog as logging
+import splatlog
 
 from . import io, dyn, err
 from .rich_fmt import RichFormatter
@@ -175,7 +175,7 @@ class ArgumentParser(argparse.ArgumentParser):
     def is_backtracing(self, pkg_name, args):
         return (
             args.backtrace
-            or logging.get_pkg_logger(pkg_name).level is logging.DEBUG
+            or splatlog.get_logger(pkg_name).level is splatlog.DEBUG
             or self.env("backtrace", False)
         )
 

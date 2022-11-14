@@ -16,11 +16,11 @@ from rich.text import Text
 from rich.console import RenderGroup
 from rich.markdown import Markdown
 from rich.table import Table
-import splatlog as logging
+import splatlog
 
 from . import io
 
-LOG = logging.getLogger(__name__)
+LOG = splatlog.get_logger(__name__)
 
 MIN_WIDTH = 64
 ARG_INVOCATION_RATIO = 0.33

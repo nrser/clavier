@@ -1,7 +1,7 @@
-import splatlog as logging
+import splatlog
 
 
-LOG = logging.getLogger(__name__)
+LOG = splatlog.get_logger(__name__)
 
 
 def add_to(subparsers):

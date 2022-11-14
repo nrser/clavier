@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import splatlog as logging
 from clavier import Sesh, builtin
 
 from . import cmd
@@ -13,6 +12,6 @@ def run():
         "Clavier package example CLI app",
         (builtin, cmd),
     )
-    sesh.setup(logging.INFO)
+    sesh.setup(verbosity=1)
     sesh.parse()
     sesh.exec()

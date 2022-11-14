@@ -30,6 +30,6 @@ setuptools.setup(
         # Sorted containers used in `clavier.cfg`
         "sortedcontainers>=2.3.0,<3",
         # Logging
-        "splatlog>=0.2.0",
+        "splatlog>=0.3.0",
     ],
 )

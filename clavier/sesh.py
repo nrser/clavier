@@ -6,7 +6,6 @@ from typing import (
     Dict,
     Iterable,
     Union,
-    Callable,
     Optional,
 )
 from pathlib import Path
@@ -17,7 +16,7 @@ import splatlog
 from . import err, io
 from .arg_par import ArgumentParser
 
-_LOG_ = splatlog.getLogger(__name__)
+LOG = splatlog.get_logger(__name__)
 
 
 # NOTE  This took very little to write, and works for the moment, but it relies
@@ -43,7 +42,7 @@ class Sesh:
     A CLI app session
     """
 
-    _LOG_ = splatlog.getLogger(__name__, "Sesh")
+    LOG = splatlog.get_logger(__name__).getChild("Sesh")
 
     pkg_name: str
     parser: ArgumentParser
@@ -68,29 +67,37 @@ class Sesh:
     def is_backtracing(self) -> bool:
         return self.parser.is_backtracing(self.pkg_name, self.args)
 
-    def setup(self: Sesh, log_level: Optional[splatlog.Level] = None) -> Sesh:
-        # Setup splat logging for Clavier itself, as a _library_, which will
-        # result in it getting a higher (less logged) default logging level
-        splatlog.setup(splatlog.root_name(__name__), "lib")
-
-        # Setup splat logging for the package that will be using Clavier, as
-        # an _application_, which will result in a lower (more logged) default
-        # logging level
-        splatlog.setup(self.pkg_name, "app")
+    def setup(self: Sesh, verbosity: splatlog.Verbosity = 0) -> Sesh:
+        splatlog.setup(
+            console="stderr",
+            verbosity_levels={
+                self.pkg_name: (
+                    (0, splatlog.WARNING),
+                    (1, splatlog.INFO),
+                    (2, splatlog.DEBUG),
+                ),
+                splatlog.root_name(__name__): (
+                    (0, splatlog.WARNING),
+                    (3, splatlog.INFO),
+                    (4, splatlog.DEBUG),
+                ),
+            },
+            verbosity=verbosity,
+        )
 
         return self
 
-    @_LOG_.inject
-    def parse(self, *args, log=_LOG_, **kwds) -> Sesh:
+    @LOG.inject
+    def parse(self, *args, log=LOG, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
 
-        splatlog.setVerbosity(self._args.verbose)
+        splatlog.set_verbosity(self._args.verbose)
 
         log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
-    @_LOG_.inject
-    def run(self, log=_LOG_) -> int:
+    @LOG.inject
+    def run(self, log=LOG) -> int:
         if not hasattr(self.args, "__target__"):
             log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")
