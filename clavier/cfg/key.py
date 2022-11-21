@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Generator, Iterable, Type, Union
+from typing import Generator, Iterable, Type, TypeVar, Union
 import re
 from inspect import isclass, ismodule, isfunction
 
@@ -16,41 +16,56 @@ TSplitable = Union[
     Iterable["TSplitable"],
 ]
 
+_Self = TypeVar("_Self", bound="Key")
 
-class Key(tuple):
+
+class Key(tuple[str]):
     """
-    A key.
+    A configuration key.
 
-    Examples:
+    ##### Examples #####
 
-    Keys can be empty:
+    Keys can be empty.
 
-        >>> Key()
-        Key()
-        >>> len(Key())
-        0
+    ```python
+    >>> Key()
+    Key()
+
+    >>> len(Key())
+    0
+
+    ```
 
     Empty keys disappear when used as segments:
 
-        >>> Key(Key(), "a.b")
-        Key('a', 'b')
+    ```python
+    >>> Key(Key(), "a.b")
+    Key('a', 'b')
+
+    ```
 
     This is pretty much _just_ so that `Changeset` can have an empty
-    `.prefix`, making a bit of code cleaner and clearer. Please don't abuse
-    it.
+    `Changeset.prefix`, making a bit of code cleaner and clearer. Please don't
+    abuse it.
 
     However, you _can't_ embed empty segments into string representations:
 
-        >>> Key(".a.b")
-        Traceback (most recent call last):
-            ...
-        ValueError: Each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*, found '' in '.a.b'
+    ```python
+    >>> Key(".a.b")
+    Traceback (most recent call last):
+        ...
+    KeyError: "'.a.b' not convertible to a Key:
+        each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+        found '' in '.a.b'"
 
-        >>> Key("a..b")
-        Traceback (most recent call last):
-            ...
-        ValueError: Each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*, found '' in 'a..b'
+    >>> Key("a..b")
+    Traceback (most recent call last):
+        ...
+    KeyError: "'a..b' not convertible to a Key:
+        each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+        found '' in 'a..b'"
 
+    ```
     """
 
     STRING_SEPARATOR = "."
@@ -64,7 +79,7 @@ class Key(tuple):
 
     @classmethod
     def normalize(cls, value: TSplitable) -> Generator[str, None, None]:
-        """\
+        """
         Yield the normalized sequence of validated `Key` segment string for the
         given `value`. As it uses `Key.split` internally, accepts:
 
@@ -76,7 +91,7 @@ class Key(tuple):
         5.  `typing.Iterable` containing any of the accepted types, including
             other iterables.
 
-        ## Raises ##
+        **Raises**
 
         -   `ValueError` if any `str` segment does not conform to the segment
             pattern (see `Key.SEGMENT_FORMAT`).
@@ -90,14 +105,14 @@ class Key(tuple):
                 yield segment
             else:
                 raise ValueError(
-                    "Each segment in a `key` must full-match "
+                    "each segment in a `key` must full-match "
                     f"{cls.SEGMENT_FORMAT.pattern}, found {repr(segment)} in "
                     f"{repr(value)}"
                 )
 
     @classmethod
     def split(cls, value: TSplitable) -> Generator[str, None, None]:
-        """\
+        """
         Recursively splits `value` according to `Key` semantics, yielding `str`
         elements. Accepts:
 
@@ -110,51 +125,64 @@ class Key(tuple):
         6.  `typing.Iterable` containing any of the accepted types, including
             other iterables.
 
-        > ## Note ##
-        >
+        > 📝 NOTE
         > This method does _not_ validate the yielded `str` segments, it simply
         > splits them. Validation is handled when invoked through `normalize`.
 
-        ## Raises ##
+        Raises
 
         -   `TypeError` if `value` is not one of the accepted types listed
             above.
         -   `UnicodeDecodeError` if any element is a `bytes` instance that fails
             to decode as a utf-8 string.
 
-        ## Examples ##
+        ##### Examples #####
 
         Splits strings:
 
-            >>> list(Key.split("a.b.c"))
-            ['a', 'b', 'c']
+        ```python
+        >>> list(Key.split("a.b.c"))
+        ['a', 'b', 'c']
+
+        ```
 
         Just to avoid dealing with the fact that they are `Iterable`, decodes
         `bytes` as `utf-8`:
 
-            >>> list(Key.split(b"a.b.c"))
-            ['a', 'b', 'c']
+        ```python
+        >>> list(Key.split(b"a.b.c"))
+        ['a', 'b', 'c']
+
+        ```
 
         Recurs into `Iterable`:
 
-            >>> list(Key.split(["a.b", "c.d"]))
-            ['a', 'b', 'c', 'd']
+        ```python
+        >>> list(Key.split(["a.b", "c.d"]))
+        ['a', 'b', 'c', 'd']
+
+        ```
 
         Does what you (hopefully) want with classes:
 
-            >>> from pathlib import Path
-            >>> list(Key.split(Path))
-            ['pathlib', 'Path']
+        ```python
+        >>> from pathlib import Path
+        >>> list(Key.split(Path))
+        ['pathlib', 'Path']
+
+        ```
 
         Everyhing else barfs:
 
-            >>> list(Key.split(1))
-            Traceback (most recent call last):
-                ...
-            TypeError: Expected str, bytes, Iterable, class or module; given <class 'int'>: 1
+        ```python
+        >>> list(Key.split(1))
+        Traceback (most recent call last):
+            ...
+        TypeError: expected str, bytes, Iterable, class or module; given <class 'int'>: 1
 
+        ```
         """
-        # print(f"HERE {repr(value)}")
+
         if isinstance(value, str):
             yield from value.split(cls.STRING_SEPARATOR)
         elif isinstance(value, bytes):
@@ -187,13 +215,12 @@ class Key(tuple):
             yield from cls.split((value.__module__, value.__qualname__))
         else:
             raise TypeError(
-                "Expected str, bytes, Iterable, class or module; "
+                "expected str, bytes, Iterable, class or module; "
                 f"given {type(value)}: {repr(value)}"
             )
 
-    def __new__(self, *values):
-        """\
-        Construct a `Key`.
+    def __new__(self, *values) -> _Self:
+        """Construct a `Key`.
 
         Since keys are tuples, and tuples are immutable, an optimization is
         performed to simply return any sole `Key` instance argument.
@@ -208,33 +235,53 @@ class Key(tuple):
                 # Little touch to make it nicer to read errors when providing a
                 # single argument -- just normalize that argument, rather than
                 # a `tuple` with only one member
-                return tuple.__new__(Key, self.normalize(values[0]))
-        return tuple.__new__(Key, self.normalize(values))
+                values = values[0]
+
+        try:
+            return tuple.__new__(Key, self.normalize(values))
+        except (KeyError, KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as error:
+            # Honestly, tacking the source error's message on the end is due to
+            # not being able to get `doctest` to match against a chained error,
+            # but whatever, I can live with it (2022-11-20).
+            #
+            # The source error is chained on so the user has a useful stack
+            # trace to where the problem ocurred if needed.
+            #
+            raise KeyError(
+                f"{values!r} not convertible to a Key: {error}"
+            ) from error
 
     @property
     def env_name(self):
-        """\
-        The environment variable name for a `Key`.
+        """The environment variable name for a `Key`.
 
         Examples:
 
         We're just using `"_"` instead of `"."` to join the segments and
         upper-casing:
 
-            >>> Key("hey.ho.lets_go").env_name
-            'HEY_HO_LETS_GO'
+        ```python
+        >>> Key("hey.ho.lets_go").env_name
+        'HEY_HO_LETS_GO'
 
-            >>> Key("clavier", "some", "setting").env_name
-            'CLAVIER_SOME_SETTING'
+        >>> Key("clavier", "some", "setting").env_name
+        'CLAVIER_SOME_SETTING'
+
+        ```
 
         Notes that this process is **_ambiguous_**:
 
-            >>> ( Key("clavier", "some", "setting")
-            ...   == Key("clavier", "some_setting") )
-            False
-            >>> ( Key("clavier", "some", "setting").env_name
-            ...   == Key("clavier", "some_setting").env_name )
-            True
+        ```python
+        >>> ( Key("clavier", "some", "setting")
+        ...   == Key("clavier", "some_setting") )
+        False
+        >>> ( Key("clavier", "some", "setting").env_name
+        ...   == Key("clavier", "some_setting").env_name )
+        True
+
+        ```
 
         Only _you_ can prevent environment variable name collisions!
         """
@@ -249,8 +296,11 @@ class Key(tuple):
 
         1.  Useful when with `__package__`
 
+            ```python
             >>> Key("clavier.cfg").root
             Key('clavier')
+
+            ```
 
         """
         if self.is_empty():
@@ -263,12 +313,14 @@ class Key(tuple):
 
         Examples:
 
-            >>> repr(Key("a"))
-            "Key('a')"
+        ```python
+        >>> repr(Key("a"))
+        "Key('a')"
 
-            >>> repr(Key("a.b.c"))
-            "Key('a', 'b', 'c')"
+        >>> repr(Key("a.b.c"))
+        "Key('a', 'b', 'c')"
 
+        ```
         """
         return "Key(" + ", ".join(repr(s) for s in self) + ")"
 
@@ -278,36 +330,45 @@ class Key(tuple):
 
         Examples:
 
-            >>> str(Key("a"))
-            'a'
+        ```python
+        >>> str(Key("a"))
+        'a'
 
-            >>> str(Key("a", "b", "c"))
-            'a.b.c'
+        >>> str(Key("a", "b", "c"))
+        'a.b.c'
 
+        ```
         """
         return self.STRING_SEPARATOR.join(self)
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         """\
         Is this key empty?
 
         Examples:
 
-            >>> Key().is_empty()
-            True
+        ```python
+        >>> Key().is_empty()
+        True
 
-            >>> Key("a.b.c").is_empty()
-            False
+        >>> Key("a.b.c").is_empty()
+        False
 
+        ```
         """
         return len(self) == 0
 
     def scopes(self) -> Generator[Key, None, None]:
-        """\
+        """
         Yield a each key-scope that this `Key` belongs to.
 
-            >>> list(Key("a.b.c.d").scopes())
-            [Key('a'), Key('a', 'b'), Key('a', 'b', 'c')]
+        ##### Examples #####
+
+        ```python
+        >>> list(Key("a.b.c.d").scopes())
+        [Key('a'), Key('a', 'b'), Key('a', 'b', 'c')]
+
+        ```
 
         It's always true that
 
@@ -317,21 +378,101 @@ class Key(tuple):
 
         Empty keys have no scopes:
 
-            >>> list(Key().scopes()) == []
-            True
+        ```python
+        >>> list(Key().scopes()) == []
+        True
+
+        ```
 
         Same as keys of length 1:
 
-            >>> list(Key("blah").scopes()) == []
-            True
+        ```python
+        >>> list(Key("blah").scopes()) == []
+        True
 
+        ```
         """
         for stop in range(1, len(self)):
             yield Key(self[0:stop])
 
+    # Modifying Keys
+    # ------------------------------------------------------------------------
+    #
+    # As keys are immutable, all methods return a _new_ instance.
+    #
 
-if __name__ == "__main__":
-    from pathlib import Path
-    import doctest
+    def append(self, *key) -> _Self:
+        """
+        Add to the end of a key.
 
-    doctest.testmod()
+        ##### Examples #####
+
+        ```python
+        >>> Key("a.b").append("c")
+        Key('a', 'b', 'c')
+
+        >>> Key("a.b").append("c.d", "e")
+        Key('a', 'b', 'c', 'd', 'e')
+
+        ```
+        """
+        return self.__class__(self, key)
+
+    #: Support alternative name for `append`, similar to `list`.
+    #:
+    #: Due to how `normalize` works the difference between `list.append` (takes
+    #: a single entry) and `list.extend` (takes an iterable of entries) is not
+    #: present so we can simple alias one to the other.
+    #:
+    extend = append
+
+    def prepend(self, *key) -> _Self:
+        """
+        Add to the begining of a key.
+
+        ##### Examples #####
+
+        ```python
+        >>> Key("c.d").prepend("a.b")
+        Key('a', 'b', 'c', 'd')
+
+        >>> Key("d").prepend(Key("a"), Key("b.c"))
+        Key('a', 'b', 'c', 'd')
+
+        ```
+        """
+        return self.__class__(key, self)
+
+    def __truediv__(self, key) -> _Self:
+        """
+        Support extending a key using the `/` operator, like `pathlib.Path`.
+
+        ##### Examples #####
+
+        ```python
+        >>> Key("a.b") / "c"
+        Key('a', 'b', 'c')
+
+        >>> Key("a.b") / "c.d" / "e"
+        Key('a', 'b', 'c', 'd', 'e')
+
+        >>> Key("a.b") / Key("c.d")
+        Key('a', 'b', 'c', 'd')
+
+        ```
+        """
+        return self.extend(key)
+
+    def __rtruediv__(self, key) -> _Self:
+        """
+        Support prepending a key using the `/` operator, like `pathlib.Path`.
+
+        ##### Examples #####
+
+        ```python
+        >>> "a.b" / Key("c")
+        Key('a', 'b', 'c')
+
+        ```
+        """
+        return self.prepend(key)

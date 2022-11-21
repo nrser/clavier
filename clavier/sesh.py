@@ -1,6 +1,8 @@
 """The `Sesh` class."""
 
 from __future__ import annotations
+import asyncio
+from inspect import unwrap
 from typing import (
     Any,
     Dict,
@@ -13,10 +15,10 @@ import argparse
 import sys
 import splatlog
 
-from . import err, io
+from . import err, io, cfg
 from .arg_par import ArgumentParser
 
-LOG = splatlog.get_logger(__name__)
+_LOG = splatlog.get_logger(__name__)
 
 
 # NOTE  This took very little to write, and works for the moment, but it relies
@@ -42,10 +44,10 @@ class Sesh:
     A CLI app session
     """
 
-    LOG = splatlog.get_logger(__name__).getChild("Sesh")
+    _LOG = splatlog.get_logger(__name__).getChild("Sesh")
 
     pkg_name: str
-    parser: ArgumentParser
+    _parser: Optional[ArgumentParser] = None
     _args: Optional[argparse.Namespace]
 
     def __init__(
@@ -56,7 +58,8 @@ class Sesh:
     ):
         self._args = None
         self.pkg_name = pkg_name
-        self.parser = ArgumentParser.create(description, cmds)
+        self.description = description
+        self.init_cmds = cmds
 
     @property
     def args(self):
@@ -64,10 +67,43 @@ class Sesh:
             raise err.InternalError("Must `parse()` first to populate `args`")
         return self._args
 
-    def is_backtracing(self) -> bool:
-        return self.parser.is_backtracing(self.pkg_name, self.args)
+    @property
+    def parser(self) -> ArgumentParser:
+        if self._parser is None:
+            raise err.InternalError("Must `setup()` first to populate `parser`")
+        return self._parser
 
-    def setup(self: Sesh, verbosity: splatlog.Verbosity = 0) -> Sesh:
+    def get_setting(self, name: str, default=None):
+        if self._args is not None:
+            return getattr(self._args, name)
+
+        prog_key = cfg.Key(self.pkg_name, name)
+        if prog_key in cfg.CFG:
+            return cfg.CFG[prog_key]
+
+        self_key = cfg.Key(cfg.SELF_ROOT_KEY, name)
+        if self_key in cfg.CFG:
+            return cfg.CFG[self_key]
+
+        return default
+
+    def is_backtracing(self) -> bool:
+        return bool(self.get_setting("backtrace"))
+        # return (
+        #     self.get_arg("backtrace", False)
+        #     or (
+        #         splatlog.get_logger(self.pkg_name).getEffectiveLevel()
+        #         is splatlog.DEBUG
+        #     )
+        #     or self.env("backtrace", False)
+        # )
+
+    def setup(
+        self: Sesh, verbosity: Optional[splatlog.Verbosity] = None
+    ) -> Sesh:
+        if verbosity is None:
+            verbosity = self.get_setting("verbosity", 0)
+
         splatlog.setup(
             console="stderr",
             verbosity_levels={
@@ -76,7 +112,7 @@ class Sesh:
                     (1, splatlog.INFO),
                     (2, splatlog.DEBUG),
                 ),
-                splatlog.root_name(__name__): (
+                splatlog.root_name(__package__): (
                     (0, splatlog.WARNING),
                     (3, splatlog.INFO),
                     (4, splatlog.DEBUG),
@@ -85,10 +121,14 @@ class Sesh:
             verbosity=verbosity,
         )
 
+        _LOG.debug("HERE", verbosity=verbosity)
+
+        self._parser = ArgumentParser.create(self.description, self.init_cmds)
+
         return self
 
-    @LOG.inject
-    def parse(self, *args, log=LOG, **kwds) -> Sesh:
+    @_LOG.inject
+    def parse(self, *args, log=_LOG, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
 
         splatlog.set_verbosity(self._args.verbose)
@@ -96,8 +136,8 @@ class Sesh:
         log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
-    @LOG.inject
-    def run(self, log=LOG) -> int:
+    @_LOG.inject
+    def run(self, log=_LOG) -> int:
         if not hasattr(self.args, "__target__"):
             log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")
@@ -116,9 +156,11 @@ class Sesh:
 
         # pylint: disable=broad-except
         try:
-            result = self.args.__target__(**kwds)
+            if asyncio.iscoroutinefunction(unwrap(self.args.__target__)):
+                result = asyncio.run(self.args.__target__(**kwds))
+            else:
+                result = self.args.__target__(**kwds)
         except KeyboardInterrupt:
-            # sys.exit(0)
             return 0
         except Exception as error:
             if self.is_backtracing():
@@ -132,7 +174,6 @@ class Sesh:
                     f"{type(error).__name__}: {error}\n\n"
                     "Add `--backtrace` to print stack.",
                 )
-            # sys.exit(1)
             return 1
 
         if not isinstance(result, io.View):
@@ -158,5 +199,10 @@ class Sesh:
 
         return result.return_code
 
-    def exec(self):
+    # F'ing doc generator can't cope with anything named 'exec' due to using
+    # `lib2to3` to parse (`exec` was a keyword in Python 2):
+    #
+    # https://bugs.python.org/issue44259
+    #
+    def execute(self):
         sys.exit(self.run())

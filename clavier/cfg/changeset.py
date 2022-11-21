@@ -6,7 +6,7 @@ from .scope import ReadScope, WriteScope
 
 
 class Changeset:
-    """\
+    """
     A runtime object used to create a `Config.Update` in Python code. This is
     what is used under-the-hood when configuring in a source file.
 
@@ -15,20 +15,26 @@ class Changeset:
 
     Intended use:
 
-        >>> from clavier import CFG
-        >>> with CFG.configure("stats.doctest", src=__file__) as c:
-        ...     c.x = "ex"
-        ...     c.y = "why?"
-        ...
-        >>> CFG.stats.doctest.x
-        'ex'
-        >>> CFG.stats.doctest.y
-        'why?'
+    ```python
+    >>> from clavier import CFG
+    >>> with CFG.configure("stats.doctest", src=__file__) as c:
+    ...     c.x = "ex"
+    ...     c.y = "why?"
+    ...
+    >>> CFG.stats.doctest.x
+    'ex'
+    >>> CFG.stats.doctest.y
+    'why?'
+
+    ```
 
     In that example, `c` is a `WriteScope` with `._key` of
     `Key("stats", "doctests")`. `c._base` is the internal `Changeset`, which
     references back to the `Config` via `c._base.config`.
     """
+
+    #: Hey ya
+    prefix: Key
 
     def __init__(self, config, prefix, meta):
         self.config = config
@@ -100,9 +106,3 @@ class Changeset:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         if exc_type is None and exc_value is None and traceback is None:
             self.config.update(self.changes, self.meta)
-
-
-if __name__ == "__main__":
-    import doctest
-
-    doctest.testmod()

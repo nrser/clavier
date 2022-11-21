@@ -7,7 +7,7 @@ from textwrap import dedent
 from io import StringIO
 from collections import UserList
 
-from rich.console import Console, ConsoleRenderable, RichCast, RenderGroup
+from rich.console import Console, ConsoleRenderable, RichCast, Group
 from rich.theme import Theme
 from rich.pretty import Pretty
 from rich.rule import Rule
@@ -35,7 +35,7 @@ THEME = Theme(
 
 OUT = Console(theme=THEME, file=sys.stdout)
 ERR = Console(theme=THEME, file=sys.stderr)
-EMPTY = RenderGroup()
+EMPTY = Group()
 NEWLINE = Text("\n", end="")
 
 # def h1(text):
@@ -131,9 +131,9 @@ def capture(*args, **kwds) -> str:
     return capture.get()
 
 
-class RenderGrouper(UserList):
+class Grouper(UserList):
     def to_group(self):
-        return RenderGroup(*self.data)
+        return Group(*self.data)
 
     def join(self, separator):
         return self.__class__(etc.interspersed(self.data, separator))

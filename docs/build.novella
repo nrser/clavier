@@ -1,0 +1,41 @@
+import os
+import logging
+
+from doctor_genova import generate_api_pages, DrGenPreprocessor
+
+# do
+#   name: "debug-logging"
+#   closure: {
+#     precedes "copy-files"
+#   }
+#   action: {
+#     logging.getLogger("").setLevel(logging.DEBUG)
+#   }
+
+template "mkdocs"
+
+action "mkdocs-update-config" {
+  site_name = "Calvier"
+  update '$.theme.features' add: ['navigation.sections', 'navigation.indexes']
+  update '$.theme.palette' add: {'scheme': 'slate', 'primary': 'blue', 'accent': 'amber'}
+}
+
+action "preprocess-markdown" {
+  use DrGenPreprocessor(self, "doctor-genova")
+  depends_on "generate-api-pages"
+}
+
+do
+  name: "generate-api-pages"
+  closure: {
+    # Make sure that this action runs before the Markdown preprocessors.
+    precedes "preprocess-markdown"
+    
+    # Make sure that config has been updated before we attack it
+    depends_on "mkdocs-update-config"
+  }
+  action: {
+    # Call in to regular Python to do the work, passing the build dir
+    generate_api_pages(self)
+  }
+

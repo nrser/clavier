@@ -2,8 +2,10 @@ from __future__ import annotations
 from collections import namedtuple
 import re
 import os
-from typing import Any
+from typing import Any, MutableMapping
+
 from sortedcontainers import SortedDict
+import yaml
 
 from .key import Key
 from .scope import ReadScope
@@ -14,6 +16,8 @@ class Config:
     ENV_VAR_NAME_SUB_RE = re.compile(r"[^A-Z0-9]+")
 
     Update = namedtuple("Update", ["changes", "meta"])
+
+    _view: MutableMapping[Key, Any]
 
     def __init__(self):
         self._view = SortedDict()
@@ -26,24 +30,16 @@ class Config:
         return Changeset(config=self, prefix=Key(package).root, meta=meta)
 
     def env_has(self, key) -> bool:
-        return key in self._view and Key(key).env_name in os.environ
+        return Key(key).env_name in os.environ
 
     def env_get(self, key):
         value_s = os.environ[Key(key).env_name]
-        typ = type(self._view[key])
-        if typ is str:
-            return value_s
-        else:
-            try:
-                return typ(value_s)
-            except Exception:
-                return value_s
+        return yaml.safe_load(value_s)
 
-    def __contains__(self, key: Any) -> bool:
-        try:
-            key = Key(key)
-        except Exception:
-            return False
+    def __contains__(self, key) -> bool:
+        key = Key(key)
+        if self.env_has(key):
+            return True
         if key in self._view:
             return True
         for k in self._view:
@@ -51,14 +47,8 @@ class Config:
                 return True
         return False
 
-    def __getitem__(self, key: Any) -> Any:
-        try:
-            key = Key(key)
-        except KeyError as error:
-            raise error
-        except Exception as error:
-            raise KeyError(f"Not convertible to a Key: {repr(key)}") from error
-
+    def __getitem__(self, key):
+        key = Key(key)
         if self.env_has(key):
             return self.env_get(key)
         if key in self._view:
@@ -78,6 +68,12 @@ class Config:
             raise AttributeError(
                 f"Not convertible to a Key: {repr(name)}"
             ) from error
+
+    def get(self, key, default=None):
+        key = Key(key)
+        if key in self:
+            return self[key]
+        return default
 
     def __iter__(self):
         return iter(self._view)

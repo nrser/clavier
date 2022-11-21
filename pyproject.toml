@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "clavier"
+version = "0.1.5a0"
+description = "A light and not-so-bright CLI framework for Python"
+authors = [
+  "nrser <neil@neilsouza.com>"
+]
+license = "MIT"
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX",
+]
+include = [
+  "LICENSE"
+]
+packages = [
+  {include = "clavier"},
+]
+
+[tool.poetry.urls]
+Homepage = "https://github.com/nrser/clavier"
+
+[tool.poetry.dependencies]
+# We use typing.Literal, which is 3.8+
+python = "^3.8"
+
+# Pretty terminal printing
+#
+# Change `rich.console.RenderGroup` -> `rich.console.Group` is v10+
+rich = ">=10.0"
+
+# Automatic argument completion for `builtins.argparse`
+argcomplete = ">=1.12.1,<2"
+
+# Used for _creating_ Markdown, believe it or not
+mdutils = ">=1.3.0,<2"
+
+# Sorted containers used in `clavier.cfg`
+sortedcontainers = ">=2.3.0,<3"
+
+# Logging
+splatlog = ">=0.3"
+pyyaml = ">=5"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^5.2"
+black = "^22.3.0"
+novella = "^0.2.3"
+mkdocs = "^1.4.2"
+mkdocs-material = "^8.5.8"
+pydoc-markdown = "^4.6.3"
+
+# `dr.t` command to run doctests
+[tool.poetry.group.dev.dependencies.doctor-testerson]
+git = "https://github.com/nrser/doctor-testerson.git"
+
+# API documentation generation helpers
+[tool.poetry.group.dev.dependencies.doctor-genova]
+git = "https://github.com/nrser/doctor-genova.git"
+
+[tool.poetry.group.notes.dependencies]
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -13,7 +13,7 @@ from argparse import (
 
 from rich.syntax import Syntax
 from rich.text import Text
-from rich.console import RenderGroup
+from rich.console import Group
 from rich.markdown import Markdown
 from rich.table import Table
 import splatlog
@@ -59,8 +59,8 @@ class RichFormatter:
             )
 
         @property
-        def render_group(self) -> Optional[RenderGroup]:
-            return RenderGroup(*self.renderable_items)
+        def render_group(self) -> Optional[Group]:
+            return Group(*self.renderable_items)
 
         def format_rich(self):
             items = self.renderable_items
@@ -69,12 +69,12 @@ class RichFormatter:
                 return None
 
             if self.parent is None:
-                return RenderGroup(*items)
+                return Group(*items)
 
             if self.title is None or self.title == "":
-                return RenderGroup(*items, io.NEWLINE)
+                return Group(*items, io.NEWLINE)
             else:
-                return RenderGroup(
+                return Group(
                     *io.header(self.title),
                     *items,
                     io.NEWLINE,
@@ -161,7 +161,7 @@ class RichFormatter:
             return metavar
 
         else:
-            # items = io.RenderGrouper()
+            # items = io.Grouper()
             items = []
 
             # if the Optional doesn't take a value, format is:
@@ -202,7 +202,7 @@ class RichFormatter:
         table.add_column()
         for action in actions:
             invocation = self._format_action_invocation(action)
-            contents = io.RenderGrouper()
+            contents = io.Grouper()
 
             # if there was help for the action, add lines of help text
             if action.help:
@@ -428,7 +428,7 @@ class RichFormatter:
             parts.append(self._format_action(subaction))
 
         # return a render group
-        return RenderGroup(*parts)
+        return Group(*parts)
 
     def _get_default_metavar_for_optional(self, action):
         return action.dest.upper()

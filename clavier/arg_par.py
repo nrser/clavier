@@ -30,7 +30,7 @@ class HelpErrorView(io.ErrorView):
 
 
 class Subparsers(argparse._SubParsersAction):
-    """\
+    """
     Extended to use help as description if the later is missing and handle
     passing-down `hook_names`.
     """
@@ -46,7 +46,9 @@ class Subparsers(argparse._SubParsersAction):
             kwds["description"] = kwds["help"]
         return super().add_parser(name, hook_names=self.hook_names, **kwds)
 
-    def add_children(self, module__name__, module__path__):
+    def add_children(
+        self, module__name__: str, module__path__: Iterable[str]
+    ) -> None:
         for module in dyn.children_modules(module__name__, module__path__):
             _invoke_hook(module, self.hook_names, self)
 
@@ -135,6 +137,7 @@ class ArgumentParser(argparse.ArgumentParser):
             "-B",
             "--backtrace",
             action="store_true",
+            default=False,
             help="Print backtraces on error",
         )
 
@@ -172,13 +175,6 @@ class ArgumentParser(argparse.ArgumentParser):
     def env(self, name, default=None):
         return os.environ.get(self.env_var_name(name), default)
 
-    def is_backtracing(self, pkg_name, args):
-        return (
-            args.backtrace
-            or splatlog.get_logger(pkg_name).level is splatlog.DEBUG
-            or self.env("backtrace", False)
-        )
-
     def set_target(self, target):
         self.set_defaults(__target__=target)
 
@@ -205,7 +201,7 @@ class ArgumentParser(argparse.ArgumentParser):
         formatter.add_text(self.description)
         formatter.end_section()
 
-        # positionals, optionals and user-defined groups
+        # positional, optional and user-defined groups
         for action_group in self._action_groups:
             formatter.start_section(action_group.title)
             formatter.add_text(action_group.description)
