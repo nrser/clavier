@@ -1,4 +1,5 @@
 from __future__ import annotations
+from inspect import signature
 from typing import Callable, Iterable, Optional
 import argparse
 from pathlib import Path
@@ -175,8 +176,21 @@ class ArgumentParser(argparse.ArgumentParser):
     def env(self, name, default=None):
         return os.environ.get(self.env_var_name(name), default)
 
+    def get_target(self):
+        # return self.get_default("__target__")
+        return self._defaults["__target__"]
+
     def set_target(self, target):
-        self.set_defaults(__target__=target)
+        # self.set_defaults(__target__=target)
+        self._defaults["__target__"] = target
+
+        self.set_defaults(
+            **{
+                parameter.name: parameter.default
+                for parameter in signature(target).parameters.values()
+                if parameter.default is not parameter.empty
+            }
+        )
 
     def action_dests(self):
         return [
