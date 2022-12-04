@@ -9,6 +9,7 @@ from argparse import (
     ONE_OR_MORE,
     REMAINDER,
     PARSER,
+    Action,
 )
 
 from rich.syntax import Syntax
@@ -16,6 +17,8 @@ from rich.text import Text
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.table import Table
+from rich.pretty import Pretty
+from rich.columns import Columns
 import splatlog
 
 from . import io
@@ -154,7 +157,7 @@ class RichFormatter:
     def format_help(self):
         return io.render_to_string(self.format_rich())
 
-    def _format_action_invocation(self, action):
+    def _format_action_invocation(self, action: Action):
         if not action.option_strings:
             default = self._get_default_metavar_for_positional(action)
             (metavar,) = self._metavar_formatter(action, default)(1)
@@ -207,6 +210,18 @@ class RichFormatter:
             # if there was help for the action, add lines of help text
             if action.help:
                 contents.append(self._expand_help(action))
+
+            # If the action has a default then add that (this handles arg
+            # defaults)
+            if action.default is not None and action.default != SUPPRESS:
+                contents.append(
+                    Columns(
+                        [
+                            Text("default", style="dim white italic"),
+                            Pretty(action.default),
+                        ]
+                    )
+                )
 
             # if there are any sub-actions, add their help as well
             if hasattr(action, "_get_subactions"):
@@ -384,34 +399,33 @@ class RichFormatter:
 
         return formater
 
-    def _format_args(self, action, default_metavar):
+    def _format_args(self, action: Action, default_metavar) -> str:
         get_metavar = self._metavar_formatter(action, default_metavar)
         if action.nargs is None:
-            result = "%s" % get_metavar(1)
-        elif action.nargs == OPTIONAL:
-            result = "[%s]" % get_metavar(1)
-        elif action.nargs == ZERO_OR_MORE:
-            result = "[%s [%s ...]]" % get_metavar(2)
-        elif action.nargs == ONE_OR_MORE:
-            result = "%s [%s ...]" % get_metavar(2)
-        elif action.nargs == REMAINDER:
-            result = "..."
-        elif action.nargs == PARSER:
-            result = "%s ..." % get_metavar(1)
-        elif action.nargs == SUPPRESS:
-            result = ""
-        else:
-            try:
-                formats = ["%s" for _ in range(action.nargs)]
-            except TypeError:
-                raise ValueError("invalid nargs value") from None
-            result = " ".join(formats) % get_metavar(action.nargs)
-        return result
+            return "%s" % get_metavar(1)
+        if action.nargs == OPTIONAL:
+            return "[%s]" % get_metavar(1)
+        if action.nargs == ZERO_OR_MORE:
+            return "[%s [%s ...]]" % get_metavar(2)
+        if action.nargs == ONE_OR_MORE:
+            return "%s [%s ...]" % get_metavar(2)
+        if action.nargs == REMAINDER:
+            return "..."
+        if action.nargs == PARSER:
+            return "%s ..." % get_metavar(1)
+        if action.nargs == SUPPRESS:
+            return ""
+
+        try:
+            formats = ["%s" for _ in range(action.nargs)]
+        except TypeError:
+            raise ValueError("invalid nargs value") from None
+        return " ".join(formats) % get_metavar(action.nargs)
 
     def _get_default_metavar_for_positional(self, action):
         return action.dest
 
-    def _format_action(self, action):
+    def _format_action(self, action: Action) -> Group:
         # determine the required width and the entry label
         action_header = self._format_action_invocation(action)
 
@@ -433,7 +447,7 @@ class RichFormatter:
     def _get_default_metavar_for_optional(self, action):
         return action.dest.upper()
 
-    def _expand_help(self, action):
+    def _expand_help(self, action: Action) -> Markdown:
         params = dict(vars(action), prog=self._prog)
         for name in list(params):
             if params[name] is SUPPRESS:
