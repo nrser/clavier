@@ -7,19 +7,53 @@ import json
 from shutil import rmtree
 import shlex
 from functools import wraps
+
 import splatlog
 
 from .cfg import CFG
 from .io import OUT, ERR, fmt, fmt_cmd
+from .etc.ins import accepts_kwd
 
-TOpts = Mapping[Any, Any]
+
+CONFIG = CFG.clavier.sh
+
+Opts = Mapping[Any, Any]
 TOptsStyle = Literal["=", " ", ""]
 TOptsLongPrefix = Literal["--", "-"]
 _TPath = Union[Path, str]
 
+TOpts = TypeVar("TOpts", bound=dict[str, Any])
+TReturn = TypeVar("TReturn")
+TParams = ParamSpec("TParams")
 
-CONFIG = CFG.clavier.sh
-LOG = splatlog.get_logger(__name__)
+
+class InnerCommandFunction(Protocol[TOpts, TReturn]):
+    def __call__(
+        self,
+        cmd: str,
+        cwd: Optional[Path] = None,
+        **opts: TOpts,
+    ) -> TReturn:
+        ...
+
+
+# Using a "callback protocol"
+# https://stackoverflow.com/a/60667051
+class CommandFunction(Protocol[TOpts, TReturn]):
+    def __call__(
+        self,
+        *args: object,
+        cwd: Union[None, str, Path] = None,
+        opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
+        opts_sort: bool = CONFIG.opts.sort,
+        opts_style: TOptsStyle = CONFIG.opts.style,
+        rel_paths: bool = CONFIG.rel_paths,
+        **opts: TOpts,
+    ) -> TReturn:
+        ...
+
+
+_LOG = splatlog.get_logger(__name__)
 DEFAULT_OPTS_STYLE: TOptsStyle = "="
 DEFAULT_OPTS_SORT = True
 
@@ -84,7 +118,7 @@ def _iter_opt(
 
 
 def render_opts(
-    opts: TOpts,
+    opts: Opts,
     *,
     long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
     sort: bool = CONFIG.opts.sort,
@@ -174,14 +208,14 @@ def render_opts(
 
 
 def render_args(
-    args: Iterable[Any],
+    args: Iterable[object],
     *,
     opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
     opts_sort: bool = CONFIG.opts.sort,
     opts_style: TOptsStyle = CONFIG.opts.style,
     rel_to: Optional[Path] = None,
 ) -> Generator[Union[str, bytes], None, None]:
-    """\
+    """
     Render `args` to sequence of `str` (and/or `bytes`, if any values passed in
     are `bytes`).
 
@@ -220,12 +254,12 @@ def render_args(
 
 
 def prepare(
-    *args,
+    *args: object,
     cwd: Optional[_TPath] = None,
     rel_paths: bool = CONFIG.rel_paths,
     **opts,
-) -> List[str]:
-    """\
+) -> list[str]:
+    """
     Prepare `args` to be passed `subprocess.run` or similar functions.
 
     Contextualizes the relative path capabilities of `render_args` and
@@ -256,8 +290,52 @@ def prepare(
     return list(render_args(args, rel_to=rel_to, **opts))
 
 
+def command_function(
+    fn: InnerCommandFunction[TOpts, TReturn],
+) -> CommandFunction[TOpts, TReturn]:
+    """
+    Decorator helper to run `prepare` and do a bit more common normalization
+    for `get`, `run` etc.
+    """
+
+    # Does the wrapped function accept an `encoding` keyword?
+    accepts_encoding = accepts_kwd(fn, "encoding")
+
+    @wraps(fn)
+    def wrapper(
+        *args: Iterable[object],
+        cwd: Optional[_TPath] = None,
+        opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
+        opts_sort: bool = CONFIG.opts.sort,
+        opts_style: TOptsStyle = CONFIG.opts.style,
+        rel_paths: bool = CONFIG.rel_paths,
+        **opts,
+    ):
+        # Normalize str cwd path to Path
+        if isinstance(cwd, str):
+            cwd = Path(cwd)
+
+        # If the wrapped function accepts an `encoding` keyword and there
+        # isn't one in `opts` then default it from the `CONFIG`
+        if accepts_encoding and "encoding" not in opts:
+            opts["encoding"] = CONFIG.encoding
+
+        cmd = prepare(
+            *args,
+            cwd=cwd,
+            opts_long_prefix=opts_long_prefix,
+            opts_sort=opts_sort,
+            opts_style=opts_style,
+            rel_paths=rel_paths,
+        )
+
+        return fn(cmd, cwd=cwd, **opts)
+
+    return wrapper
+
+
 def join(*args, **opts) -> str:
-    """\
+    """
     Render `args` to a single string with `prepare` -> `shlex.join`. Returned
     string _should_ be suitable for pasting in a shell.
 
@@ -268,45 +346,12 @@ def join(*args, **opts) -> str:
     return shlex.join(prepare(*args, **opts))
 
 
-def prepare_wrap(fn: Callable) -> Callable:
-    """\
-    Decorator helper to run `prepare` and do a bit more common normalization
-    for `get`, `run` etc.
-    """
-
-    @wraps(fn)
-    def _prepare_wrapper(
-        *args,
-        cwd: Optional[_TPath] = None,
-        encoding: Optional[str] = CONFIG.encoding,
-        opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
-        opts_sort: bool = CONFIG.opts.sort,
-        opts_style: TOptsStyle = CONFIG.opts.style,
-        rel_paths: bool = CONFIG.rel_paths,
-        **opts,
-    ):
-        # Normalize str cwd path to Path
-        if isinstance(cwd, str):
-            cwd = Path(cwd)
-        cmd = prepare(
-            *args,
-            cwd=cwd,
-            opts_long_prefix=opts_long_prefix,
-            opts_sort=opts_sort,
-            opts_style=opts_style,
-            rel_paths=rel_paths,
-        )
-        return fn(*cmd, cwd=cwd, encoding=encoding, **opts)
-
-    return _prepare_wrapper
-
-
 # pylint: disable=redefined-builtin
-@LOG.inject
-@prepare_wrap
+@_LOG.inject
+@command_function
 def get(
-    *cmd,
-    log=LOG,
+    cmd: str,
+    log: splatlog.SplatLogger = _LOG,
     format: Optional[str] = None,
     **opts,
 ) -> Any:
@@ -327,15 +372,17 @@ def get(
     elif format == "json":
         return json.loads(output)
     else:
-        log.warn("Unknown `format`", format=format, expected=[None, "json"])
+        log.warn(
+            "Unknown `format`", format=format, expected=[None, "strip", "json"]
+        )
         return output
 
 
-@LOG.inject
-@prepare_wrap
+@_LOG.inject
+@command_function
 def run(
-    *cmd,
-    log=LOG,
+    cmd: str,
+    log: splatlog.SplatLogger = _LOG,
     check: bool = True,
     input: Union[None, str, bytes, Path] = None,
     **opts,
@@ -359,9 +406,9 @@ def run(
         return subprocess.run(cmd, check=check, input=input, **opts)
 
 
-@LOG.inject
+@_LOG.inject
 def test(*args, **kwds) -> bool:
-    """\
+    """
     Run a command and return whether or not it succeeds (has
     `subprocess.CompletedProcess.returncode` equal to `0`).
 
@@ -374,15 +421,13 @@ def test(*args, **kwds) -> bool:
     return run(*args, check=False, **kwds).returncode == 0
 
 
-@LOG.inject
-@prepare_wrap
+@_LOG.inject
+@command_function
 def replace(
-    *cmd,
-    log=LOG,
-    # Used, but defaulted in `prepare_cmd`, so needs to be accepted here
-    encoding: Optional[str] = None,
+    cmd: list[str],
+    cwd: Optional[Path],
     env: Optional[Mapping] = None,
-    cwd: Optional[Union[str, Path]] = None,
+    log: splatlog.SplatLogger = _LOG,
 ) -> NoReturn:
     # https://docs.python.org/3.9/library/os.html#os.execl
     for console in (OUT, ERR):
@@ -408,8 +453,8 @@ def replace(
             os.execvpe(proc_name, cmd, env)
 
 
-@LOG.inject
-def file_absent(path: Path, name: Optional[str] = None, log=LOG):
+@_LOG.inject
+def file_absent(path: Path, name: Optional[str] = None, log=_LOG):
     if name is None:
         name = fmt(path)
     if path.exists():
@@ -422,8 +467,8 @@ def file_absent(path: Path, name: Optional[str] = None, log=LOG):
         log.info(f"[yeah]{name} already absent.[/yeah]", path=path)
 
 
-@LOG.inject
-def dir_present(path: Path, desc: Optional[str] = None, log=LOG):
+@_LOG.inject
+def dir_present(path: Path, desc: Optional[str] = None, log=_LOG):
     if desc is None:
         desc = fmt(path)
     if path.exists():
@@ -436,9 +481,3 @@ def dir_present(path: Path, desc: Optional[str] = None, log=LOG):
     else:
         log.info(f"[holup]Creating {desc} directory...[/holup]", path=path)
         os.makedirs(path)
-
-
-if __name__ == "__main__":
-    import doctest
-
-    doctest.testmod()
