@@ -1,5 +1,11 @@
 {
   "[python]": {
     "editor.formatOnSave": true
-  }
+  },
+  
+  // Simply to get VSCode (pylance) to stop bitching about the name of the 
+  // `clavier.io` module :/
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportShadowedImports": "none",
+  },
 }
