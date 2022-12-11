@@ -21,3 +21,7 @@ with CFG.configure(SELF_ROOT_KEY, src=__file__) as clavier:
             opts.long_prefix = "--"
             opts.sort = True
             opts.style = "="
+
+
+def get_root(module_name: str):
+    return CFG[Key(module_name).root]
