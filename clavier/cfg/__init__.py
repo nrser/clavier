@@ -22,6 +22,15 @@ with CFG.configure(SELF_ROOT_KEY, src=__file__) as clavier:
             opts.sort = True
             opts.style = "="
 
+    with clavier.configure("dyn") as dyn:
+        with dyn.configure("children_modules") as children_modules:
+            children_modules.on_error = "warn"
+
 
 def get_root(module_name: str):
     return CFG[Key(module_name).root]
+
+
+configure = CFG.configure
+get = CFG.get
+inject = CFG.inject

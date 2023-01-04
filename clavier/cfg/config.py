@@ -1,15 +1,26 @@
 from __future__ import annotations
 from collections import namedtuple
+from functools import wraps
 import re
 import os
-from typing import Any, MutableMapping
+from typing import (
+    Any,
+    MutableMapping,
+    Callable,
+    ParamSpec,
+    Concatenate,
+    TypeVar,
+)
 
 from sortedcontainers import SortedDict
 import yaml
 
-from .key import Key
+from .key import Key, KeyMatter
 from .scope import ReadScope
 from .changeset import Changeset
+
+TParams = ParamSpec("TParams")
+TReturn = TypeVar("TReturn")
 
 
 class Config:
@@ -47,7 +58,7 @@ class Config:
                 return True
         return False
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Any:
         key = Key(key)
         if self.env_has(key):
             return self.env_get(key)
@@ -69,7 +80,7 @@ class Config:
                 f"Not convertible to a Key: {repr(name)}"
             ) from error
 
-    def get(self, key, default=None):
+    def get(self, key: KeyMatter, default=None) -> Any:
         key = Key(key)
         if key in self:
             return self[key]
@@ -84,3 +95,15 @@ class Config:
 
     def to_dict(self):
         return {str(key): self[key] for key in self._view}
+
+    def inject(
+        self, fn: Callable[Concatenate[Any, TParams], TReturn]
+    ) -> Callable[TParams, TReturn]:
+        key = Key(fn.__module__, fn.__name__)
+
+        @wraps(fn)
+        def configured(*args: TParams.args, **kwds: TParams.kwargs) -> TReturn:
+            config = self.get(key)
+            return fn(config, *args, **kwds)
+
+        return configured

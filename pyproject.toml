@@ -40,7 +40,9 @@ mdutils = ">=1.3.0,<2"
 sortedcontainers = ">=2.3.0,<3"
 
 # Logging
-splatlog = ">=0.3"
+# This is really `>=0.3`, but it's under heavy dev rn (2023-01-03), so use the
+# latest-n-greatest!
+splatlog = { git = "https://github.com/nrser/splatlog.git" }
 pyyaml = ">=5"
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from inspect import signature
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional, cast
 import argparse
 from pathlib import Path
 import os
@@ -45,7 +45,11 @@ class Subparsers(argparse._SubParsersAction):
     def add_parser(self, name, **kwds) -> ArgumentParser:
         if "help" in kwds and "description" not in kwds:
             kwds["description"] = kwds["help"]
-        return super().add_parser(name, hook_names=self.hook_names, **kwds)
+
+        # This is really just to make the type checker cool wit it
+        kwds["hook_names"] = self.hook_names
+
+        return super().add_parser(name, **kwds)
 
     def add_children(
         self, module__name__: str, module__path__: Iterable[str]
@@ -165,7 +169,9 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def add_subparsers(self, **kwds) -> Subparsers:
         kwds["hook_names"] = self.hook_names
-        return super().add_subparsers(**kwds)
+        # TODO  Threw the `cast` in to satisfy PyLance, not _sure_ that it's
+        #       right..?
+        return cast(Subparsers, super().add_subparsers(**kwds))
 
     def no_target(self):
         return HelpErrorView(self)
@@ -201,6 +207,18 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def add_children(self, module__name__, module__path__):
         self.add_subparsers().add_children(module__name__, module__path__)
+
+    def _get_formatter(self) -> RichFormatter:
+        formatter = super()._get_formatter()
+        if not isinstance(formatter, RichFormatter):
+            raise TypeError(
+                "expected formatter to be a {}, found a {}: {}".format(
+                    splatlog.lib.fmt(RichFormatter),
+                    splatlog.lib.fmt_type_of(formatter),
+                    splatlog.lib.fmt(formatter),
+                )
+            )
+        return formatter
 
     def format_rich_help(self):
         formatter = self._get_formatter()

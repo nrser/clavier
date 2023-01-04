@@ -373,7 +373,7 @@ pydoc-markdown = "4.6.3"
 type = "git"
 url = "https://github.com/nrser/doctor-genova.git"
 reference = "HEAD"
-resolved_reference = "5352ffbb3a85b6036f5eea5ad03092a48bc1d382"
+resolved_reference = "0c60f42fa8c5dab603ec89538d457eaf65f8a627"
 
 [[package]]
 name = "doctor-testerson"
@@ -392,7 +392,7 @@ rich = ">=9"
 type = "git"
 url = "https://github.com/nrser/doctor-testerson.git"
 reference = "HEAD"
-resolved_reference = "8e3946bc23008a98a99b8208c3f1a3ecbb6163a7"
+resolved_reference = "9fb47ad5463760d950f90f6ce521267aa67e0b0d"
 
 [[package]]
 name = "entrypoints"
@@ -1464,15 +1464,22 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "splatlog"
-version = "0.3.0"
+version = "0.3.1a0"
 description = "Python logger that accepts ** values and prints 'em out."
 category = "main"
 optional = false
-python-versions = ">=3.8,<4.0"
+python-versions = "^3.8"
+develop = false
 
 [package.dependencies]
 rich = ">=9"
-typeguard = ">=2.13.3,<3.0.0"
+typeguard = "^2.13.3"
+
+[package.source]
+type = "git"
+url = "https://github.com/nrser/splatlog.git"
+reference = "HEAD"
+resolved_reference = "c4124fc824712ef6c69c51e26c4e4070f97ef138"
 
 [[package]]
 name = "stack-data"
@@ -1678,7 +1685,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "ee8d3fe1ec797926eeaab7152ba3b50f3a83325eef3c74b6fb4f1b6795dc58ac"
+content-hash = "978d4c1986d02e080b386987a36af0e8c8ed7b570e7fd5c6703967f67a603c6f"
 
 [metadata.files]
 anyio = [
@@ -2417,10 +2424,7 @@ soupsieve = [
     {file = "soupsieve-2.3.2.post1-py3-none-any.whl", hash = "sha256:3b2503d3c7084a42b1ebd08116e5f81aadfaea95863628c80a3b774a11b7c759"},
     {file = "soupsieve-2.3.2.post1.tar.gz", hash = "sha256:fc53893b3da2c33de295667a0e19f078c14bf86544af307354de5fcf12a3f30d"},
 ]
-splatlog = [
-    {file = "splatlog-0.3.0-py3-none-any.whl", hash = "sha256:9815eef5811d15b1e17be687e60b9419d23050ebf2f7eafc3a3767eedc83cbe8"},
-    {file = "splatlog-0.3.0.tar.gz", hash = "sha256:ad624c2a0ba036442971e6aee09d4b3c1acc19c7881f9b9b99600a7ddbe972e0"},
-]
+splatlog = []
 stack-data = [
     {file = "stack_data-0.6.1-py3-none-any.whl", hash = "sha256:960cb054d6a1b2fdd9cbd529e365b3c163e8dabf1272e02cfe36b58403cff5c6"},
     {file = "stack_data-0.6.1.tar.gz", hash = "sha256:6c9a10eb5f342415fe085db551d673955611afb821551f554d91772415464315"},

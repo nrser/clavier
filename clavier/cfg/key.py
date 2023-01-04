@@ -1,22 +1,19 @@
 from __future__ import annotations
+from types import ModuleType
 from typing import Generator, Iterable, Type, TypeVar, Union
 import re
 from inspect import isclass, ismodule, isfunction
 
-# This is funky... but I'm not sure how else to get a reference to the module
-# class (prints as `<class 'module'>`)
-TModule = type(re)
-
 # The type of `value` that `Key.split` accepts, which is recursive
-TSplitable = Union[
+KeyMatter = Union[
     str,
     bytes,
-    Type,
-    TModule,
-    Iterable["TSplitable"],
+    type,
+    ModuleType,
+    Iterable["KeyMatter"],
 ]
 
-_Self = TypeVar("_Self", bound="Key")
+TKey = TypeVar("TKey", bound="Key")
 
 
 class Key(tuple[str]):
@@ -78,7 +75,7 @@ class Key(tuple[str]):
         return False
 
     @classmethod
-    def normalize(cls, value: TSplitable) -> Generator[str, None, None]:
+    def normalize(cls, value: KeyMatter) -> Generator[str, None, None]:
         """
         Yield the normalized sequence of validated `Key` segment string for the
         given `value`. As it uses `Key.split` internally, accepts:
@@ -111,7 +108,7 @@ class Key(tuple[str]):
                 )
 
     @classmethod
-    def split(cls, value: TSplitable) -> Generator[str, None, None]:
+    def split(cls, value: KeyMatter) -> Generator[str, None, None]:
         """
         Recursively splits `value` according to `Key` semantics, yielding `str`
         elements. Accepts:
@@ -219,7 +216,7 @@ class Key(tuple[str]):
                 f"given {type(value)}: {repr(value)}"
             )
 
-    def __new__(self, *values) -> _Self:
+    def __new__(cls, *values: KeyMatter):
         """Construct a `Key`.
 
         Since keys are tuples, and tuples are immutable, an optimization is
@@ -227,7 +224,7 @@ class Key(tuple[str]):
         """
         # Special-case single argument calls
         if len(values) == 1:
-            if isinstance(values[0], self.__class__):
+            if isinstance(values[0], cls):
                 # Called with a single `Key`. Since they're immutable we just
                 # return it back.
                 return values[0]
@@ -235,10 +232,12 @@ class Key(tuple[str]):
                 # Little touch to make it nicer to read errors when providing a
                 # single argument -- just normalize that argument, rather than
                 # a `tuple` with only one member
-                values = values[0]
+                _values = values[0]
+        else:
+            _values = values
 
         try:
-            return tuple.__new__(Key, self.normalize(values))
+            return tuple.__new__(cls, cls.normalize(_values))
         except (KeyError, KeyboardInterrupt, SystemExit):
             raise
         except Exception as error:
@@ -250,7 +249,7 @@ class Key(tuple[str]):
             # trace to where the problem ocurred if needed.
             #
             raise KeyError(
-                f"{values!r} not convertible to a Key: {error}"
+                f"{_values!r} not convertible to a Key: {error}"
             ) from error
 
     @property
@@ -358,7 +357,7 @@ class Key(tuple[str]):
         """
         return len(self) == 0
 
-    def scopes(self) -> Generator[Key, None, None]:
+    def scopes(self: TKey) -> Generator[TKey, None, None]:
         """
         Yield a each key-scope that this `Key` belongs to.
 
@@ -393,7 +392,7 @@ class Key(tuple[str]):
         ```
         """
         for stop in range(1, len(self)):
-            yield Key(self[0:stop])
+            yield self.__class__(self[0:stop])
 
     # Modifying Keys
     # ------------------------------------------------------------------------
@@ -401,7 +400,7 @@ class Key(tuple[str]):
     # As keys are immutable, all methods return a _new_ instance.
     #
 
-    def append(self, *key) -> _Self:
+    def append(self: TKey, *key) -> TKey:
         """
         Add to the end of a key.
 
@@ -426,7 +425,7 @@ class Key(tuple[str]):
     #:
     extend = append
 
-    def prepend(self, *key) -> _Self:
+    def prepend(self: TKey, *key) -> TKey:
         """
         Add to the begining of a key.
 
@@ -443,7 +442,7 @@ class Key(tuple[str]):
         """
         return self.__class__(key, self)
 
-    def __truediv__(self, key) -> _Self:
+    def __truediv__(self: TKey, key) -> TKey:
         """
         Support extending a key using the `/` operator, like `pathlib.Path`.
 
@@ -463,7 +462,7 @@ class Key(tuple[str]):
         """
         return self.extend(key)
 
-    def __rtruediv__(self, key) -> _Self:
+    def __rtruediv__(self: TKey, key) -> TKey:
         """
         Support prepending a key using the `/` operator, like `pathlib.Path`.
 

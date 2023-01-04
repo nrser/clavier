@@ -49,17 +49,18 @@ class Sesh:
     pkg_name: str
     _parser: Optional[ArgumentParser] = None
     _args: Optional[argparse.Namespace]
+    _init_cmds: Any
 
     def __init__(
         self: Sesh,
         pkg_name: str,
         description: Union[str, Path],
-        cmds: Iterable[Any],
+        cmds: Any,
     ):
         self._args = None
         self.pkg_name = pkg_name
         self.description = description
-        self.init_cmds = cmds
+        self._init_cmds = cmds
 
     @property
     def args(self):
@@ -68,12 +69,16 @@ class Sesh:
         return self._args
 
     @property
+    def init_cmds(self) -> Any:
+        return self._init_cmds
+
+    @property
     def parser(self) -> ArgumentParser:
         if self._parser is None:
             raise err.InternalError("Must `setup()` first to populate `parser`")
         return self._parser
 
-    def get_setting(self, name: str, default=None):
+    def get_setting(self, name: str, default=None) -> Any:
         if self._args is not None:
             return getattr(self._args, name)
 
@@ -98,9 +103,7 @@ class Sesh:
         #     or self.env("backtrace", False)
         # )
 
-    def setup(
-        self: Sesh, verbosity: Optional[splatlog.Verbosity] = None
-    ) -> Sesh:
+    def setup(self: Sesh, verbosity: None | splatlog.Verbosity = None) -> Sesh:
         if verbosity is None:
             verbosity = self.get_setting("verbosity", 0)
 

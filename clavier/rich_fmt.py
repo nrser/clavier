@@ -10,6 +10,7 @@ from argparse import (
     REMAINDER,
     PARSER,
     Action,
+    HelpFormatter,
 )
 
 from rich.syntax import Syntax
@@ -29,7 +30,7 @@ MIN_WIDTH = 64
 ARG_INVOCATION_RATIO = 0.33
 
 
-class RichFormatter:
+class RichFormatter(HelpFormatter):
     """Formatter for `argparse.ArgumentParser` using `rich`.
 
     Adapted from `argparse.HelpFormatter`.
