@@ -49,28 +49,24 @@ def children_modules(
     parent__name__: str,
     parent__path__: Iterable[str],
 ) -> Generator[ModuleType, None, None]:
-    for _loader, name, _is_pkg in pkgutil.walk_packages(parent__path__):
+    for module_info in pkgutil.iter_modules(parent__path__):
+        try:
+            yield get_child_module(module_info.name, parent__name__)
 
-        # We only want the direct descendants, so filter out anything with
-        # "." in it's name
-        if "." not in name:
-            try:
-                yield get_child_module(name, parent__name__)
+        except Exception:
+            if config.on_error != "warn":
+                raise
 
-            except Exception:
-                if config.on_error != "warn":
-                    raise
+            log_args = (
+                (
+                    "Failed to import module `{!s}.{!s}; "
+                    "some commands may not be available."
+                ),
+                parent__name__,
+                module_info.name,
+            )
 
-                log_args = (
-                    (
-                        "Failed to import module `{!s}.{!s}; "
-                        "some commands may not be available."
-                    ),
-                    parent__name__,
-                    name,
-                )
-
-                if cfg.CFG.get(_BACKTRACE_KEY, False):
-                    _LOG.exception(*log_args)
-                else:
-                    _LOG.warning(*log_args)
+            if cfg.CFG.get(_BACKTRACE_KEY, False):
+                _LOG.exception(*log_args)
+            else:
+                _LOG.warning(*log_args)
