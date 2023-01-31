@@ -103,7 +103,12 @@ class Sesh:
         #     or self.env("backtrace", False)
         # )
 
-    def setup(self: Sesh, verbosity: None | splatlog.Verbosity = None) -> Sesh:
+    def setup(
+        self,
+        verbosity: None | splatlog.Verbosity = None,
+        autocomplete: bool = True,
+        prog: str | None = None,
+    ) -> Sesh:
         if verbosity is None:
             verbosity = self.get_setting("verbosity", 0)
 
@@ -126,7 +131,12 @@ class Sesh:
 
         _LOG.debug("HERE", verbosity=verbosity)
 
-        self._parser = ArgumentParser.create(self.description, self.init_cmds)
+        self._parser = ArgumentParser.create(
+            self.description,
+            self.init_cmds,
+            autocomplete=autocomplete,
+            prog=prog,
+        )
 
         return self
 

@@ -7,7 +7,6 @@ import os
 from textwrap import dedent
 
 from rich.console import Console
-from argcomplete import autocomplete
 import splatlog
 
 from . import io, dyn, err
@@ -78,7 +77,15 @@ def _invoke_hook(
 
 class ArgumentParser(argparse.ArgumentParser):
     @classmethod
-    def create(cls, description, cmds, *, hook_names=DEFAULT_HOOK_NAMES):
+    def create(
+        cls,
+        description,
+        cmds,
+        *,
+        prog: str | None = None,
+        hook_names=DEFAULT_HOOK_NAMES,
+        autocomplete: bool = True,
+    ):
         if isinstance(description, Path):
             with description.open("r") as file:
                 description = file.read()
@@ -88,6 +95,7 @@ class ArgumentParser(argparse.ArgumentParser):
             raise TypeError("Expected `pathlib.Path` or `str`")
 
         parser = cls(
+            prog=prog,
             description=description,
             notes=dedent(
                 """\
@@ -115,7 +123,11 @@ class ArgumentParser(argparse.ArgumentParser):
             # It must be a hook itself (legacy form)
             cmds(subparsers)
 
-        autocomplete(parser)
+        if autocomplete:
+            import argcomplete
+
+            argcomplete.autocomplete(parser)
+
         return parser
 
     def __init__(
