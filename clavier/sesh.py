@@ -6,14 +6,15 @@ from inspect import unwrap
 from typing import (
     Any,
     Dict,
-    Iterable,
     Union,
     Optional,
 )
 from pathlib import Path
 import argparse
 import sys
+
 import splatlog
+from rich.console import Console
 
 from . import err, io, cfg
 from .arg_par import ArgumentParser
@@ -47,8 +48,8 @@ class Sesh:
     _LOG = splatlog.get_logger(__name__).getChild("Sesh")
 
     pkg_name: str
-    _parser: Optional[ArgumentParser] = None
-    _args: Optional[argparse.Namespace]
+    _parser: ArgumentParser | None = None
+    _args: argparse.Namespace | None = None
     _init_cmds: Any
 
     def __init__(
@@ -57,7 +58,6 @@ class Sesh:
         description: Union[str, Path],
         cmds: Any,
     ):
-        self._args = None
         self.pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
@@ -112,8 +112,14 @@ class Sesh:
         if verbosity is None:
             verbosity = self.get_setting("verbosity", 0)
 
+        console = Console(
+            file=sys.stderr,
+            color_system="truecolor",
+            force_terminal=True,
+        )
+
         splatlog.setup(
-            console="stderr",
+            console=console,
             verbosity_levels={
                 self.pkg_name: (
                     (0, splatlog.WARNING),
