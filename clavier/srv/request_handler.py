@@ -24,6 +24,7 @@ class Request(NamedTuple):
     data: bytes
     fds: list[int]
     socket: socket.socket
+    t_start_ns: int
 
 
 class RequestHandler(BaseRequestHandler):
@@ -208,10 +209,14 @@ class RequestHandler(BaseRequestHandler):
             )
             self.request.socket.send(INT_STRUCT.pack(self._exit_status))
 
-            delta_ms = (monotonic_ns() - t_start_ns) // MS_TO_NS
+            t_end_ns = monotonic_ns()
+            handle_ms = (t_end_ns - t_start_ns) // MS_TO_NS
+            total_ms = (t_end_ns - self.request.t_start_ns) // MS_TO_NS
 
             self._log.info(
                 "Request handled",
-                delta_ms=delta_ms,
+                args=self.argv[1:],
                 exit_status=self._exit_status,
+                handle_ms=handle_ms,
+                total_ms=total_ms,
             )

@@ -7,7 +7,7 @@ import socket
 import sys
 from socketserver import UnixStreamServer, ForkingMixIn
 import threading
-from time import sleep
+from time import monotonic_ns, sleep
 from types import FrameType
 from typing import Any, cast
 from clavier.sesh import Sesh
@@ -205,12 +205,13 @@ class Server(ForkingMixIn, UnixStreamServer):
         self._log.debug("Getting request...")
 
         sock, client_addr = self.socket.accept()
+        t_start_ns = monotonic_ns()
 
         data, fds, _flags, _addr = socket.recv_fds(
             sock, MAX_DATA_LENGTH, MAX_FDS
         )
 
-        request = Request(data, fds, sock)
+        request = Request(data, fds, sock, t_start_ns)
 
         self._log.debug(f"Got request", data_bytes=len(data), fds=fds)
 
