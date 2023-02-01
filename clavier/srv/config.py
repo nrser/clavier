@@ -30,7 +30,7 @@ class Config:
     # Optional fields
 
     cache_sesh: bool = False
-    server_log_level: int = logging.WARNING
+    server_log_level: int = logging.INFO
 
     # Generated fields, see `__post_init__`
 
