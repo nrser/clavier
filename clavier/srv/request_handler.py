@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 import pickle
 import signal
@@ -7,7 +8,7 @@ from socketserver import BaseRequestHandler
 import sys
 import threading
 from time import monotonic_ns
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 import splatlog
 
@@ -69,6 +70,12 @@ class RequestHandler(BaseRequestHandler):
             )
         return self._argv
 
+    @property
+    def args(self) -> list[str] | None:
+        if self._argv is None:
+            return None
+        return self._argv[1:]
+
     def _signal_thread(
         self, sock: socket.socket, done_event: threading.Event
     ) -> None:
@@ -84,13 +91,58 @@ class RequestHandler(BaseRequestHandler):
                 self._log.info("Raising signal", signal_number=signal_number)
                 signal.raise_signal(signal_number)
 
-    def _parse_request(self):
-        self._log.debug("Parsing request (un-pickling)...")
-        cwd, env, argv = pickle.loads(self.request.data)
+    def _try_parse_with_pickle(
+        self,
+    ) -> tuple[Literal[True], None] | tuple[Literal[False], Exception]:
+        self._log.debug("Trying to parse with `pickle`...")
+        try:
+            cwd, env, argv = pickle.loads(self.request.data)
+
+        except pickle.UnpicklingError as error:
+            self._log.debug("Un-pickleing failed.")
+            return (False, error)
+
         self._cwd = cwd
         self._env = env
         self._argv = argv
-        self._log.debug("Request parsed.")
+
+        self._log.debug("Successfully parsed with `pickle`.")
+
+        return (True, None)
+
+    def _try_parse_with_json(
+        self,
+    ) -> tuple[Literal[True], None] | tuple[Literal[False], Exception]:
+        self._log.debug("Trying to parse with `json`...")
+        try:
+            payload = json.loads(self.request.data.decode("utf-8"))
+
+            self._cwd = payload["cwd"]
+            self._env = payload["env"]
+            self._argv = payload["argv"]
+
+        except Exception as error:
+            self._log.debug("JSON parsing failed.")
+            return (False, error)
+
+        self._log.debug("Successfully parsed with `json`.")
+
+        return (True, None)
+
+    def _parse_request(self):
+        errors: list[tuple[str, Exception]] = []
+
+        for parser in (self._try_parse_with_pickle, self._try_parse_with_json):
+            match parser():
+                case (True, _):
+                    return
+                case (False, error):
+                    errors.append((parser.__name__, error))
+
+        for name, error in errors:
+            self._log.error("{} failed", name, exc_info=error)
+
+        raise RuntimeError("All parse methods failed, see logs for details.")
 
     def _set_stdio(self) -> None:
         if len(self.request.fds) < 3:
@@ -215,7 +267,7 @@ class RequestHandler(BaseRequestHandler):
 
             self._log.info(
                 "Request handled",
-                args=self.argv[1:],
+                args=self.args,
                 exit_status=self._exit_status,
                 handle_ms=handle_ms,
                 total_ms=total_ms,
