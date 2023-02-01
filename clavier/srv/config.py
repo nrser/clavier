@@ -22,18 +22,25 @@ GetSesh = Callable[[], Sesh]
 class Config:
     name: str
     work_dir: Path
+
     get_sesh: GetSesh
-    pid_file_name: str = field(init=False)
+    cache_sesh: bool = False
+
     pid_file_path: Path = field(init=False)
-    socket_file_name: str = field(init=False)
     socket_file_path: Path = field(init=False)
+    client_log_path: Path = field(init=False)
+    server_log_path: Path = field(init=False)
 
     def __post_init__(self):
         set_ = builtins.object.__setattr__
-        set_(self, "pid_file_name", f".{self.name}.pid")
-        set_(self, "pid_file_path", self.work_dir / self.pid_file_name)
-        set_(self, "socket_file_name", f".{self.name}.sock")
-        set_(self, "socket_file_path", self.work_dir / self.socket_file_name)
+        set_(self, "pid_file_path", self.work_dir / f".{self.name}.pid")
+        set_(self, "socket_file_path", self.work_dir / f".{self.name}.sock")
+        set_(
+            self, "client_log_path", self.work_dir / f".{self.name}.client.log"
+        )
+        set_(
+            self, "server_log_path", self.work_dir / f".{self.name}.server.log"
+        )
 
     def read_pid(self) -> int | None:
         """

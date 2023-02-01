@@ -10,6 +10,7 @@ import threading
 from time import sleep
 from types import FrameType
 from typing import Any, cast
+from clavier.sesh import Sesh
 
 import splatlog
 from rich.console import Console
@@ -70,13 +71,12 @@ class Server(ForkingMixIn, UnixStreamServer):
 
         # Redirect standard file descriptors to /dev/null; we'll use logging
         # only for output
-        for stdio in (sys.stdin, sys.stdout, sys.stderr):
-            os.dup2(os.open(os.devnull, os.O_RDWR), stdio.fileno())
+        dev_null = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(dev_null, fd)
 
         # Setup logging
-        with (config.work_dir / "server.log").open(
-            "a+", encoding="utf-8"
-        ) as log_file:
+        with config.server_log_path.open("a+", encoding="utf-8") as log_file:
             console = Console(
                 file=log_file,
                 color_system="truecolor",
@@ -85,13 +85,13 @@ class Server(ForkingMixIn, UnixStreamServer):
 
             handler = splatlog.RichHandler(console=console)
 
-            root_logger = splatlog.get_logger(splatlog.root_name(__name__))
+            srv_logger = splatlog.get_logger("clavier.srv")
             # TODO  Some way to control this...
-            root_logger.setLevel(splatlog.DEBUG)
+            srv_logger.setLevel(splatlog.DEBUG)
             # Don't propagate logs! Otherwise they'll end up hitting the root
             # logger that the CLI sets up
-            root_logger.logger.propagate = False
-            root_logger.addHandler(handler)
+            srv_logger.logger.propagate = False
+            srv_logger.addHandler(handler)
 
             # Remove the socket file if it exists
             if config.socket_file_path.exists():
@@ -136,19 +136,17 @@ class Server(ForkingMixIn, UnixStreamServer):
         )
 
     _config: Config
-    _log_file: TextIOWrapper
+    _main_pid: int
+    _cached_sesh: Sesh | None = None
 
     def __init__(self, config: Config):
         super().__init__(str(config.socket_file_path), RequestHandler)
 
+        self._config = config
         self._main_pid = os.getpid()
 
-        self._config = config
-        self._log_file = open(
-            config.work_dir / "server.log",
-            mode="a+",
-            encoding="utf-8",
-        )
+        if config.cache_sesh is True:
+            self._cached_sesh = config.get_sesh()
 
     @property
     def _splatlog_self_(self) -> Text:
@@ -169,6 +167,11 @@ class Server(ForkingMixIn, UnixStreamServer):
     @property
     def config(self) -> Config:
         return self._config
+
+    def get_sesh(self) -> Sesh:
+        if sesh := self._cached_sesh:
+            return sesh
+        return self._config.get_sesh()
 
     def terminate(
         self, signal_number: int, stack_frame: FrameType | None
@@ -242,7 +245,7 @@ class Server(ForkingMixIn, UnixStreamServer):
         request.socket.close()
 
         self._log.debug("Closing file descriptors...")
-        os.closerange(min(request.fds), max(request.fds))
+        os.closerange(min(request.fds), max(request.fds) + 1)
 
         self._log.debug(f"Request closed.")
 

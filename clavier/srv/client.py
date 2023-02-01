@@ -1,4 +1,3 @@
-import array
 import pickle
 import signal
 import socket
@@ -11,8 +10,6 @@ from typing import Any, Callable, Iterable, NoReturn, TypeAlias, Union
 
 import splatlog
 from rich.console import Console
-
-from clavier.sesh import Sesh
 
 from .config import Config, MAX_DATA_LENGTH, INT_STRUCT, GetSesh
 
@@ -64,12 +61,8 @@ def process_argv() -> bool:
     return False
 
 
-def main(name: str, work_dir: Path, get_sesh: GetSesh) -> NoReturn:
-    config = Config(name, work_dir, get_sesh)
-
-    with (config.work_dir / "client.log").open(
-        "a+", encoding="utf-8"
-    ) as log_file:
+def main(config: Config) -> NoReturn:
+    with config.client_log_path.open("a+", encoding="utf-8") as log_file:
         console = Console(
             file=log_file,
             color_system="truecolor",
@@ -86,16 +79,20 @@ def main(name: str, work_dir: Path, get_sesh: GetSesh) -> NoReturn:
         root_logger.logger.propagate = False
         root_logger.addHandler(handler)
 
-        reset = process_argv()
+        reset = False
+
+        if any(arg in RESET_SERVER_ARGS for arg in sys.argv):
+            sys.argv = [arg for arg in sys.argv if arg not in RESET_SERVER_ARGS]
+            reset = True
 
         if reset or (not config.pid_file_path.exists()):
             from .server import Server
 
-            # print("Creating server...", file=sys.stderr)
+            _LOG.debug("Creating server...")
             Server.create(config)
 
         while not config.socket_file_path.exists():
-            # print("Waiting for socket...", file=sys.stderr)
+            _LOG.debug("Waiting for socket file to be created...")
             sleep(0.25)
 
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -118,7 +115,8 @@ def main(name: str, work_dir: Path, get_sesh: GetSesh) -> NoReturn:
                     )
                 )
 
-            fds = [f.fileno() for f in (sys.stdin, sys.stdout, sys.stderr)]
+            # fds = [f.fileno() for f in (sys.stdin, sys.stdout, sys.stderr)]
+            fds = [0, 1, 2]
 
             if "_ARGCOMPLETE" in os.environ:
                 _LOG.debug("Argcomplete! Appending fds 8 and 9...")
@@ -142,7 +140,10 @@ def main(name: str, work_dir: Path, get_sesh: GetSesh) -> NoReturn:
             _LOG.debug(f"Received exit status", exit_status=exit_status)
 
         _LOG.debug("Closing file desriptors", fds=fds)
-        for fd in fds:
-            os.close(fd)
+        os.closerange(0, max(fds) + 1)
+        _LOG.debug(
+            "File descriptors closed; closing log and exiting.",
+            exit_status=exit_status,
+        )
 
     os._exit(exit_status)

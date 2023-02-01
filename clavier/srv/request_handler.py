@@ -109,8 +109,9 @@ class RequestHandler(BaseRequestHandler):
         for stdio in (sys.stdout, sys.stderr):
             stdio.flush()
 
-        for stdio in (sys.stdin, sys.stdout, sys.stderr):
-            os.dup2(os.open(os.devnull, os.O_RDWR), stdio.fileno())
+        dev_null = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(dev_null, fd)
 
         self._log.debug("Stdio unset.")
 
@@ -145,13 +146,10 @@ class RequestHandler(BaseRequestHandler):
         self._set_environment()
         self._start_signal_thread()
 
-        sesh = self.server.config.get_sesh()
+        sesh = self.server.get_sesh()
 
         if "_ARGCOMPLETE" in self.env:
             self._log.debug("Setting up argcomplete...")
-
-            # os.dup2(self.request.fds[3], 8)
-            # os.dup2(self.request.fds[4], 9)
 
             with os.fdopen(self.request.fds[3], "wb") as output_stream:
                 import argcomplete
