@@ -1,10 +1,13 @@
 from __future__ import annotations
-from typing import (
-    Any,
-    Dict,
-)
+from typing import Any, TYPE_CHECKING, Union
+
+from rich.repr import RichReprResult
 
 from .key import Key
+
+if TYPE_CHECKING:
+    from .config import Config
+    from .changeset import Changeset
 
 
 class ReadScope:
@@ -12,9 +15,12 @@ class ReadScope:
     A small adapter providing read access to a particular scope of a Config.
     """
 
+    _base: Union["Config", "Changeset"]
+    _key: Key
+
     def __init__(self, base, key):
-        super().__setattr__("_base", base)
-        super().__setattr__("_key", Key(key))
+        object.__setattr__(self, "_base", base)
+        object.__setattr__(self, "_key", Key(key))
 
     def __contains__(self, name: Any) -> bool:
         try:
@@ -42,7 +48,16 @@ class ReadScope:
                 f"`{self.__class__.__name__}` has no key {repr(key)}"
             ) from error
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict[str, Any]:
+        from .config import Config
+
+        if not isinstance(self._base, Config):
+            raise TypeError(
+                "`to_dict` only works when base is a Config (it's a {})".format(
+                    type(self._base)
+                )
+            )
+
         prefix = str(self._key) + Key.STRING_SEPARATOR
         dct = {}
         for key, value in self._base.to_dict().items():
@@ -50,12 +65,19 @@ class ReadScope:
                 dct[key.removeprefix(prefix)] = value
         return dct
 
+    def __rich_repr__(self) -> RichReprResult:
+        # yield "base", self._base
+        # NOTE  Can't just yield a Key, 'cause it's a tuple?
+        yield str(self._key)
+
 
 class WriteScope(ReadScope):
     """\
     A scope adapter that funnels writes through to a `Changeset` (in addition
     to facilitating scoped reads).
     """
+
+    _base: "Changeset"
 
     def __setattr__(self, name: str, value: Any) -> None:
         self._base[Key(self._key, name)] = value

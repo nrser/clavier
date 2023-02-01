@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .key import Key
 from .scope import ReadScope, WriteScope
+
+if TYPE_CHECKING:
+    from .config import Config
 
 
 class Changeset:
@@ -35,8 +38,9 @@ class Changeset:
 
     #: Hey ya
     prefix: Key
+    config: "Config"
 
-    def __init__(self, config, prefix, meta):
+    def __init__(self, config: "Config", prefix, meta):
         self.config = config
         self.prefix = Key(prefix)
         self.meta = meta
