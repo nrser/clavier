@@ -148,7 +148,10 @@ class Server(ForkingMixIn, UnixStreamServer):
         self._main_pid = os.getpid()
 
         if config.cache_sesh is True:
-            self._cached_sesh = config.get_sesh()
+            try:
+                self._cached_sesh = config.get_sesh()
+            except:
+                self._log.exception("Failed to create cached session")
 
     @property
     def _splatlog_self_(self) -> Text:
