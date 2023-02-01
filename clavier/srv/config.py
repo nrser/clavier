@@ -30,7 +30,6 @@ class Config:
     # Optional fields
 
     cache_sesh: bool = False
-    client_log_level: int = logging.WARNING
     server_log_level: int = logging.WARNING
 
     # Generated fields, see `__post_init__`
@@ -38,16 +37,12 @@ class Config:
     pid_file_path: Path = field(init=False)
     socket_file_path: Path = field(init=False)
 
-    client_log_path: Path = field(init=False)
     server_log_path: Path = field(init=False)
 
     def __post_init__(self):
         set_ = builtins.object.__setattr__
         set_(self, "pid_file_path", self.work_dir / f".{self.name}.pid")
         set_(self, "socket_file_path", self.work_dir / f".{self.name}.sock")
-        set_(
-            self, "client_log_path", self.work_dir / f".{self.name}.client.log"
-        )
         set_(
             self, "server_log_path", self.work_dir / f".{self.name}.server.log"
         )
