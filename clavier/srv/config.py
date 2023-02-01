@@ -3,6 +3,7 @@ from pathlib import Path
 import struct
 from typing import Callable
 import builtins
+import logging
 
 from clavier.sesh import Sesh
 
@@ -20,14 +21,23 @@ GetSesh = Callable[[], Sesh]
 
 @dataclass(frozen=True)
 class Config:
+    # Required fields
+
     name: str
     work_dir: Path
-
     get_sesh: GetSesh
+
+    # Optional fields
+
     cache_sesh: bool = False
+    client_log_level: int = logging.WARNING
+    server_log_level: int = logging.WARNING
+
+    # Generated fields, see `__post_init__`
 
     pid_file_path: Path = field(init=False)
     socket_file_path: Path = field(init=False)
+
     client_log_path: Path = field(init=False)
     server_log_path: Path = field(init=False)
 

@@ -54,13 +54,6 @@ class ForwardSignals:
             signal.signal(signal_number, self._prev_handlers[index])
 
 
-def process_argv() -> bool:
-    if any(arg in RESET_SERVER_ARGS for arg in sys.argv):
-        sys.argv = [arg for arg in sys.argv if arg not in RESET_SERVER_ARGS]
-        return True
-    return False
-
-
 def main(config: Config) -> NoReturn:
     with config.client_log_path.open("a+", encoding="utf-8") as log_file:
         console = Console(
@@ -73,7 +66,7 @@ def main(config: Config) -> NoReturn:
 
         root_logger = splatlog.get_logger(splatlog.root_name(__name__))
         # TODO  Some way to control this...
-        root_logger.setLevel(splatlog.DEBUG)
+        root_logger.setLevel(config.client_log_level)
         # Don't propagate logs! Otherwise they'll end up hitting the root
         # logger that the CLI sets up
         root_logger.logger.propagate = False

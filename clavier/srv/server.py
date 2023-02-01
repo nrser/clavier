@@ -45,6 +45,10 @@ class Server(ForkingMixIn, UnixStreamServer):
         # decouple from parent environment
         os.chdir(config.work_dir)
         os.setsid()
+
+        # You're _supposed to_ reset the `umask` when daemonizing, but I think
+        # it's more intuitive if the server just runs with the same umask as
+        # the terminal that started it
         # os.umask(0)
 
         # do second fork
@@ -61,7 +65,6 @@ class Server(ForkingMixIn, UnixStreamServer):
         # We are now in the detached server daemon process!
 
         # Setup the pid file and register to remote it at exit
-
         pid = os.getpid()
 
         with config.pid_file_path.open("w+", encoding="utf-8") as pid_file:
@@ -86,8 +89,7 @@ class Server(ForkingMixIn, UnixStreamServer):
             handler = splatlog.RichHandler(console=console)
 
             srv_logger = splatlog.get_logger("clavier.srv")
-            # TODO  Some way to control this...
-            srv_logger.setLevel(splatlog.DEBUG)
+            srv_logger.setLevel(config.server_log_level)
             # Don't propagate logs! Otherwise they'll end up hitting the root
             # logger that the CLI sets up
             srv_logger.logger.propagate = False
