@@ -6,6 +6,7 @@ import socket
 from socketserver import BaseRequestHandler
 import sys
 import threading
+from time import monotonic_ns
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import splatlog
@@ -14,6 +15,9 @@ from .config import INT_STRUCT
 
 if TYPE_CHECKING:
     from .server import Server
+
+
+MS_TO_NS = 10**6
 
 
 class Request(NamedTuple):
@@ -165,6 +169,8 @@ class RequestHandler(BaseRequestHandler):
         sesh.parse().execute()
 
     def handle(self) -> None:
+        t_start_ns = monotonic_ns()
+
         try:
             self._handle()
 
@@ -202,4 +208,10 @@ class RequestHandler(BaseRequestHandler):
             )
             self.request.socket.send(INT_STRUCT.pack(self._exit_status))
 
-            self._log.info("Request done.", exit_status=self._exit_status)
+            delta_ms = (monotonic_ns() - t_start_ns) // MS_TO_NS
+
+            self._log.info(
+                "Request handled",
+                delta_ms=delta_ms,
+                exit_status=self._exit_status,
+            )
