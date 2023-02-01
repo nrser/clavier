@@ -250,8 +250,11 @@ class Server(ForkingMixIn, UnixStreamServer):
 
         request.socket.close()
 
-        self._log.debug("Closing file descriptors...")
-        os.closerange(min(request.fds), max(request.fds) + 1)
+        if request.fds:
+            self._log.debug("Closing file descriptors...")
+            os.closerange(min(request.fds), max(request.fds) + 1)
+        else:
+            self._log.debug("No file descriptors to close.")
 
         self._log.debug(f"Request closed.")
 
