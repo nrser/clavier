@@ -46,10 +46,8 @@ class Server(ForkingMixIn, UnixStreamServer):
         os.chdir(config.work_dir)
         os.setsid()
 
-        # You're _supposed to_ reset the `umask` when daemonizing, but I think
-        # it's more intuitive if the server just runs with the same umask as
-        # the terminal that started it
-        # os.umask(0)
+        # Only allow user, applies to socket file created
+        os.umask(0o077)
 
         # do second fork
         try:
@@ -84,6 +82,7 @@ class Server(ForkingMixIn, UnixStreamServer):
                 file=log_file,
                 color_system="truecolor",
                 force_terminal=True,
+                width=120,
             )
 
             handler = splatlog.RichHandler(console=console)
