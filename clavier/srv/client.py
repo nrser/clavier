@@ -3,9 +3,10 @@ import signal
 import socket
 from pathlib import Path
 import sys
-from time import sleep
+from time import perf_counter, sleep
 import os
-from typing import Callable, Iterable, NoReturn
+from typing import Callable, Iterable, NoReturn, Sequence
+from argparse import ArgumentParser
 
 
 from .config import Config, MAX_DATA_LENGTH, INT_STRUCT
@@ -13,7 +14,9 @@ from .config import Config, MAX_DATA_LENGTH, INT_STRUCT
 
 WORK_DIR = Path(__file__).parents[1]
 FWD_SIGNAL_NUMS: tuple[int, ...] = (signal.SIGINT,)
+
 RESET_SERVER_ARGS = ("-_R", "-_RESET")
+START_SERVER_ARGS = ("-_S", "-_START")
 
 
 class ForwardSignals:
@@ -39,31 +42,153 @@ class ForwardSignals:
             signal.signal(signal_number, self._prev_handlers[index])
 
 
-def main(config: Config) -> NoReturn:
-    reset = False
+def info(*values: object) -> None:
+    print("[info]", *values, file=sys.stderr)
 
-    if any(arg in RESET_SERVER_ARGS for arg in sys.argv):
-        sys.argv = [arg for arg in sys.argv if arg not in RESET_SERVER_ARGS]
-        reset = True
 
-    if reset or (not config.pid_file_path.exists()):
+def err(*values: object) -> None:
+    print("[error]", *values, file=sys.stderr)
+
+
+def kill(config: Config) -> NoReturn:
+    from .server import Server, WontDieError
+
+    if not config.pid_file_path.exists():
+        info(f"Server not running -- no pid file at {config.pid_file_path}")
+        sys.exit(0)
+
+    try:
+        Server.destroy(config)
+    except WontDieError as error:
+        err(error)
+        sys.exit(1)
+
+    sys.exit(0)
+
+
+def wait_for_socket_file(
+    config: Config, attempts: int = 10, poll: float = 0.1
+) -> None:
+    t_start = perf_counter()
+
+    for _ in range(attempts):
+        if config.socket_file_path.exists():
+            return
+        sleep(poll)
+
+    delta_t = perf_counter() - t_start
+
+    raise RuntimeError(
+        f"Socket file never showed up, tried {attempts} times over "
+        f"{delta_t:.3f} seconds (look for {config.socket_file_path}"
+    )
+
+
+def wait_for_socket_connect(
+    config: Config,
+    sock: socket.socket,
+    attempts: int = 100,
+) -> None:
+    address = str(config.socket_file_path)
+    t_start = perf_counter()
+
+    last_error = None
+
+    for _ in range(attempts):
+        try:
+            sock.connect(address)
+        except (ConnectionRefusedError, FileNotFoundError) as error:
+            last_error = error
+        else:
+            return
+
+    delta_t = perf_counter() - t_start
+
+    raise RuntimeError(
+        f"Failed to connect to server socket at {address}, "
+        f"tried {attempts} times over {delta_t:.3f} seconds"
+    ) from last_error
+
+
+def main(config: Config, argv: Sequence[str] | None = None) -> NoReturn:
+    if argv is None:
+        argv = sys.argv
+
+    parser = ArgumentParser(
+        prog=config.name,
+        description=f"""
+            This is help for the client frontend for Clavier-based CLI
+            `{config.name}`. This is not the `{config.name}` CLI itself, just
+            the entry-point wrapper, the code for which can be found at
+            `{__name__}:main`. Listed below are the special options that this
+            wrapper consumes and acts upon. ALl other arguments are passed
+            through to the `{config.name}` CLI.
+        """,
+        add_help=False,
+    )
+
+    parser.add_argument(
+        "-_R",
+        "--_RESTART",
+        dest="restart",
+        action="store_true",
+        default=False,
+        help="""
+            Restart the CLI server before processing the current request,
+            reloading any code changes.
+
+            If the server is not running this has no effect, as it's
+            started automatically.
+        """,
+    )
+
+    parser.add_argument(
+        "-_K",
+        "--_KILL",
+        dest="kill",
+        action="store_true",
+        default=False,
+        help="""
+            Terminate the server and exit with code 0.
+        """,
+    )
+
+    parser.add_argument(
+        "-_N",
+        "--_NOOP",
+        dest="noop",
+        action="store_true",
+        default=False,
+        help="""
+            Don't send a command to the server; simply exit with code 0 after
+            starting the server (if it's not already running).
+        """,
+    )
+
+    parser.add_argument("-_H", "--_HELP", action="help")
+
+    srv_args, argv_out = parser.parse_known_args(argv)
+
+    if srv_args.kill:
+        kill(config)
+
+    if srv_args.restart or (not config.pid_file_path.exists()):
         from .server import Server
 
         Server.create(config)
 
-    while not config.socket_file_path.exists():
-        sleep(0.25)
+        if srv_args.noop:
+            sys.exit(0)
+
+        wait_for_socket_file(config)
+
+    elif srv_args.noop:
+        sys.exit(0)
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-        while True:
-            try:
-                sock.connect(str(config.socket_file_path))
-            except (ConnectionRefusedError, FileNotFoundError):
-                pass
-            else:
-                break
+        wait_for_socket_connect(config, sock)
 
-        payload = (os.getcwd(), dict(os.environ), sys.argv)
+        payload = (os.getcwd(), dict(os.environ), argv_out)
 
         data = pickle.dumps(payload)
 

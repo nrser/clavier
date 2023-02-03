@@ -1,13 +1,15 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 import struct
-from typing import Callable
+from typing import Callable, Literal
 import builtins
 import logging
 
 from clavier.sesh import Sesh
 
 MAX_DATA_LENGTH = 65536
+DEFAULT_KILL_ATTEMPTS = 5
+DEFAULT_KILL_WAIT_SCALAR = 0.1
 
 # Single C `int` structure, used for process exit status, signals.
 #
@@ -31,6 +33,14 @@ class Config:
 
     cache_sesh: bool = False
     server_log_level: int = logging.INFO
+    terminate_attempts: int = 5
+    terminate_backoff_base: float = 0.1
+
+    server_log_color_system: Literal[
+        "auto", "standard", "256", "truecolor"
+    ] | None = "truecolor"
+    server_log_force_terminal: bool = True
+    server_log_width: int = 80
 
     # Generated fields, see `__post_init__`
 
@@ -40,6 +50,14 @@ class Config:
     server_log_path: Path = field(init=False)
 
     def __post_init__(self):
+        assert (
+            self.terminate_attempts > 0
+        ), f"`terminate_attempts` must be > 0, given {self.terminate_attempts!r}"
+
+        assert (
+            self.terminate_backoff_base > 0
+        ), f"`terminate_backoff_base` must be > 0, given {self.terminate_backoff_base}"
+
         set_ = builtins.object.__setattr__
         set_(self, "pid_file_path", self.work_dir / f".{self.name}.pid")
         set_(self, "socket_file_path", self.work_dir / f".{self.name}.sock")
@@ -47,7 +65,15 @@ class Config:
             self, "server_log_path", self.work_dir / f".{self.name}.server.log"
         )
 
-    def read_pid(self) -> int | None:
+    def try_read_pid(self) -> int | None:
+        try:
+            return self.read_pid()
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except:
+            return None
+
+    def read_pid(self) -> int:
         """
         Read process ID from `pid_file_path`, returning `None` if:
 
@@ -55,22 +81,6 @@ class Config:
         2.  We failed to read it.
         3.  The
         """
-        if not self.pid_file_path.exists():
-            return None
 
-        try:
-            with self.pid_file_path.open("r", encoding="utf-8") as file:
-                pid_str = file.read()
-        except (SystemExit, KeyboardInterrupt):
-            raise
-        except BaseException:
-            return None
-
-        try:
-            pid = int(pid_str.strip())
-        except (SystemExit, KeyboardInterrupt):
-            raise
-        except BaseException:
-            return None
-
-        return pid
+        with self.pid_file_path.open("r", encoding="utf-8") as file:
+            return int(file.read().strip())
