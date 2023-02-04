@@ -1,5 +1,23 @@
+##############################################################################
+# DISCLAIMER
+#
+# This is a shit-show of a file. I'm sorry. It just is.
+#
+# Originally it tried to minimally extend `argparse.HelpFormatter`, but it ended
+# up having to port most if not all of it over. Hence it tries to follow what
+# `argparse.HelpFormatter` does, and some of the things `argparse.HelpFormatter`
+# does can be rather confusing to follow.
+#
+# If you see code in here that makes you go "...the fuck?", go check
+# `argparse.py` and see if that's how they did it.
+#
+# As time wears on, I've started to try and clean it up a bit. Particularly
+# right now (2023-02-04), to at least try to get rid of the huge red type
+# checker warnings.
+#
+##############################################################################
+
 from __future__ import annotations
-from typing import *
 import re as _re
 import shutil
 from argparse import (
@@ -11,23 +29,29 @@ from argparse import (
     PARSER,
     Action,
     HelpFormatter,
+    _ArgumentGroup,
 )
+from typing import Callable, Generator, Iterable, ParamSpec, TypeVar, cast
 
 from rich.syntax import Syntax
 from rich.text import Text
-from rich.console import Group
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.pretty import Pretty
 from rich.columns import Columns
 import splatlog
 
-from . import io
+from . import io, err
 
-LOG = splatlog.get_logger(__name__)
+_LOG = splatlog.get_logger(__name__)
 
 MIN_WIDTH = 64
 ARG_INVOCATION_RATIO = 0.33
+
+
+TParams = ParamSpec("TParams")
+TReturn = TypeVar("TReturn")
 
 
 class RichFormatter(HelpFormatter):
@@ -36,8 +60,18 @@ class RichFormatter(HelpFormatter):
     Adapted from `argparse.HelpFormatter`.
     """
 
-    class _Section(object):
-        def __init__(self, formatter, parent, heading=None):
+    class _Section:
+        formatter: RichFormatter
+        parent: RichFormatter._Section | None
+        heading: str | None
+        items: list[Callable[[], RenderableType | None]]
+
+        def __init__(
+            self,
+            formatter: "RichFormatter",
+            parent: RichFormatter._Section | None = None,
+            heading: str | None = None,
+        ):
             self.formatter = formatter
             self.parent = parent
             self.heading = heading
@@ -48,26 +82,20 @@ class RichFormatter(HelpFormatter):
                 self.level = 1 + parent.level
 
         @property
-        def title(self) -> Optional[str]:
+        def title(self) -> str | None:
             if self.heading is not SUPPRESS and self.heading is not None:
                 return self.heading.title()
             return None
 
-        @property
-        def renderable_items(self):
-            return list(
-                filter(
-                    lambda x: x is not None and x is not io.EMPTY,
-                    (func(*args) for func, args in self.items),
-                )
+        def get_renderable_items(self) -> tuple[RenderableType, ...]:
+            return tuple(
+                x
+                for x in (f() for f in self.items)
+                if x is not None and x is not io.EMPTY
             )
 
-        @property
-        def render_group(self) -> Optional[Group]:
-            return Group(*self.renderable_items)
-
-        def format_rich(self):
-            items = self.renderable_items
+        def format_rich(self) -> Group | None:
+            items = self.get_renderable_items()
 
             if len(items) == 0:
                 return None
@@ -85,18 +113,20 @@ class RichFormatter(HelpFormatter):
                 )
 
         def format_help(self):
-            raise "HERE"
+            # Note really sure what the story was here... guess it doesn't get
+            # called?
+            raise NotImplementedError("TODO..?!?")
             # return self.renderable
 
-    _prog: Any  # TODO Type?
+    _prog: str
     _root_section: _Section
     _current_section: _Section
     _width: int
 
-    def __init__(self, prog, *, width=None):
+    def __init__(self, prog: str, *, width=None):
         self._prog = prog
 
-        self._root_section = self._Section(self, None)
+        self._root_section = self._Section(self)
         self._current_section = self._root_section
 
         if width is None:
@@ -106,59 +136,92 @@ class RichFormatter(HelpFormatter):
         else:
             self._width = width
 
-    def _add_item(self, func, args):
-        self._current_section.items.append((func, args))
+    def _add_item(
+        self,
+        func: Callable[TParams, RenderableType | None],
+        *args: TParams.args,
+        **kwds: TParams.kwargs,
+    ) -> None:
+        self._current_section.items.append(lambda: func(*args, **kwds))
 
     # ===============================
     # Sizing Methods
     # ===============================
 
     @property
-    def _action_invocation_max_width(self):
+    def _action_invocation_max_width(self) -> int:
         return int(self._width * ARG_INVOCATION_RATIO)
 
     # ========================
     # Message building methods
     # ========================
 
-    def start_section(self, heading):
+    def start_section(self, heading: str | None) -> None:
         section = self._Section(self, self._current_section, heading)
-        self._add_item(section.format_rich, [])
+        self._add_item(section.format_rich)
         self._current_section = section
 
-    def end_section(self):
+    def end_section(self) -> None:
+        if self._current_section.parent is None:
+            raise err.InternalError(
+                "Can not end section -- current section is a root section"
+            )
         self._current_section = self._current_section.parent
 
-    def add_text(self, text):
+    def add_text(self, text: str | None) -> None:
         if text is not SUPPRESS and text is not None:
-            self._add_item(self._format_text, [text])
+            self._add_item(self._format_text, text)
 
-    def add_usage(self, usage, actions, groups, prefix="usage"):
+    def add_usage(
+        self,
+        usage: str | None,
+        actions: Iterable[Action],
+        groups: Iterable[_ArgumentGroup],
+        prefix: str | None = "usage",
+    ):
         if usage is not SUPPRESS:
-            args = usage, actions, groups
             if prefix == "":
                 # This is special case where code in `argparse` ends up using
                 # this method to get the usage string
-                self._add_item(self._format_usage, args)
+                self._add_item(self._format_usage, usage, actions, groups)
             else:
                 self.start_section(prefix)
-                self._add_item(self._format_usage, args)
+                self._add_item(self._format_usage, usage, actions, groups)
                 self.end_section()
 
-    def add_arguments(self, actions):
-        self._add_item(self._format_actions, [actions])
+    def add_arguments(self, actions: Iterable[Action]) -> None:
+        self._add_item(self._format_actions, actions)
 
     # =======================
     # Help-formatting methods
     # =======================
 
-    def format_rich(self):
+    def format_rich(self) -> RenderableType | None:
         return self._root_section.format_rich()
 
-    def format_help(self):
+    def format_help(self) -> str:
         return io.render_to_string(self.format_rich())
 
-    def _format_action_invocation(self, action: Action):
+    def _format_action(self, action: Action) -> Group:
+        # determine the required width and the entry label
+        action_header = self._format_action_invocation(action)
+
+        # collect the pieces of the action help
+        parts: list[RenderableType] = [action_header]
+
+        # if there was help for the action, add lines of help text
+        if action.help:
+            help_text = self._expand_help(action)
+            parts.append(help_text)
+
+        # if there are any sub-actions, add their help as well
+        for subaction in self._iter_subactions(action):
+            parts.append(self._format_action(subaction))
+
+        # return a render group
+        return Group(*parts)
+
+    def _format_action_invocation(self, action: Action) -> RenderableType:
         if not action.option_strings:
             default = self._get_default_metavar_for_positional(action)
             (metavar,) = self._metavar_formatter(action, default)(1)
@@ -196,15 +259,13 @@ class RichFormatter(HelpFormatter):
 
             return text
 
-    def _format_actions(self, actions):
-        if len(actions) == 0:
-            return io.EMPTY
+    def _format_actions(self, actions: Iterable[Action]) -> RenderableType:
+        rows: list[tuple[RenderableType, ...]] = []
 
-        table = Table(padding=(0, 2, 1, 0), show_header=False, box=None)
-        table.add_column(width=0)
-        table.add_column(max_width=self._action_invocation_max_width)
-        table.add_column()
         for action in actions:
+            if action.help is SUPPRESS:
+                continue
+
             invocation = self._format_action_invocation(action)
             contents = io.Grouper()
 
@@ -228,14 +289,36 @@ class RichFormatter(HelpFormatter):
             if hasattr(action, "_get_subactions"):
                 # pylint: disable=protected-access
                 contents.append(
-                    self._format_actions(list(action._get_subactions()))
+                    self._format_actions(list(self._iter_subactions(action)))
                 )
 
-            table.add_row("", invocation, contents.to_group())
+            rows.append(
+                (
+                    "",
+                    invocation,
+                    ""
+                    if action.type is None
+                    else splatlog.lib.fmt(action.type),
+                    contents.to_group(),
+                )
+            )
+
+        if len(rows) == 0:
+            return io.EMPTY
+
+        table = Table(padding=(0, 2, 1, 0), show_header=False, box=None)
+        table.add_column(width=0)
+        table.add_column(max_width=self._action_invocation_max_width)
+        table.add_column()
+        table.add_column()
+        for row in rows:
+            table.add_row(*row)
 
         return table
 
-    def _format_actions_usage(self, actions, groups):
+    def _format_actions_usage(
+        self, actions: list[Action], groups: Iterable[_ArgumentGroup]
+    ) -> RenderableType:
         # find group indices and identify actions in groups
         group_actions = set()
         inserts = {}
@@ -250,7 +333,7 @@ class RichFormatter(HelpFormatter):
                 if actions[start:end] == group._group_actions:
                     for action in group._group_actions:
                         group_actions.add(action)
-                    if not group.required:
+                    if not getattr(group, "required", None):
                         if start in inserts:
                             inserts[start] += " ["
                         else:
@@ -339,7 +422,12 @@ class RichFormatter(HelpFormatter):
         # return the text
         return text
 
-    def _format_usage(self, usage, actions, groups):
+    def _format_usage(
+        self,
+        usage: str | None,
+        actions: Iterable[Action],
+        groups: Iterable[_ArgumentGroup],
+    ) -> RenderableType:
         # if usage is specified, use that
         if usage is not None:
             usage = usage % dict(prog=self._prog)
@@ -362,91 +450,82 @@ class RichFormatter(HelpFormatter):
                     positionals.append(action)
 
             # build full usage string
-            format_fn = self._format_actions_usage
-            action_usage = format_fn(optionals + positionals, groups)
+            action_usage = self._format_actions_usage(
+                optionals + positionals, groups
+            )
             usage = " ".join([s for s in [prog, action_usage] if s])
 
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
         return Syntax(usage, "bash")
 
-    def _format_text(self, text):
+    def _format_text(self, text: str) -> RenderableType:
         if "%(prog)" in text:
             text = text % dict(prog=self._prog)
         return Markdown(text)
 
-    def _iter_subactions(self, action):
+    def _iter_subactions(self, action: Action) -> Generator[Action, None, None]:
+        """Addition to iterate subactions without indenting, see
+        `HelpFormatter._iter_indented_subactions` for comparison.
+        """
         try:
-            # pylint: disable=protected-access
-            get_subactions = action._get_subactions
+            get_subactions = cast(
+                Callable[[], Iterable[Action]],
+                getattr(action, "_get_subactions"),
+            )
         except AttributeError:
             pass
         else:
             yield from get_subactions()
 
-    def _metavar_formatter(self, action, default_metavar):
-        if action.metavar is not None:
-            result = action.metavar
-        elif action.choices is not None:
-            choice_strs = [str(choice) for choice in action.choices]
-            result = "{%s}" % ",".join(choice_strs)
-        else:
-            result = default_metavar
+    # TODO  Looks identical to super-method? Maybe indended to override with
+    #       custom implementation but never got to it?
+    # def _metavar_formatter(
+    #     self, action: Action, default_metavar: str
+    # ) -> Callable[[int], tuple[str, ...]]:
+    #     if action.metavar is not None:
+    #         result = action.metavar
+    #     elif action.choices is not None:
+    #         choice_strs = [str(choice) for choice in action.choices]
+    #         result = "{%s}" % ",".join(choice_strs)
+    #     else:
+    #         result = default_metavar
 
-        def formater(tuple_size):
-            if isinstance(result, tuple):
-                return result
-            else:
-                return (result,) * tuple_size
+    #     def formater(tuple_size: int) -> tuple[str, ...]:
+    #         if isinstance(result, tuple):
+    #             return result
+    #         else:
+    #             return (result,) * tuple_size
 
-        return formater
+    #     return formater
 
-    def _format_args(self, action: Action, default_metavar) -> str:
-        get_metavar = self._metavar_formatter(action, default_metavar)
-        if action.nargs is None:
-            return "%s" % get_metavar(1)
-        if action.nargs == OPTIONAL:
-            return "[%s]" % get_metavar(1)
-        if action.nargs == ZERO_OR_MORE:
-            return "[%s [%s ...]]" % get_metavar(2)
-        if action.nargs == ONE_OR_MORE:
-            return "%s [%s ...]" % get_metavar(2)
-        if action.nargs == REMAINDER:
-            return "..."
-        if action.nargs == PARSER:
-            return "%s ..." % get_metavar(1)
-        if action.nargs == SUPPRESS:
-            return ""
+    # def _format_args(self, action: Action, default_metavar) -> str:
+    #     get_metavar = self._metavar_formatter(action, default_metavar)
+    #     if action.nargs is None:
+    #         return "%s" % get_metavar(1)
+    #     if action.nargs == OPTIONAL:
+    #         return "[%s]" % get_metavar(1)
+    #     if action.nargs == ZERO_OR_MORE:
+    #         return "[%s [%s ...]]" % get_metavar(2)
+    #     if action.nargs == ONE_OR_MORE:
+    #         return "%s [%s ...]" % get_metavar(2)
+    #     if action.nargs == REMAINDER:
+    #         return "..."
+    #     if action.nargs == PARSER:
+    #         return "%s ..." % get_metavar(1)
+    #     if action.nargs == SUPPRESS:
+    #         return ""
 
-        try:
-            formats = ["%s" for _ in range(action.nargs)]
-        except TypeError:
-            raise ValueError("invalid nargs value") from None
-        return " ".join(formats) % get_metavar(action.nargs)
+    #     if isinstance(action.nargs, int):
+    #         formats = ["%s" for _ in range(action.nargs)]
+    #         return " ".join(formats) % get_metavar(action.nargs)
 
-    def _get_default_metavar_for_positional(self, action):
-        return action.dest
+    #     raise ValueError(f"invalid nargs value: {action.nargs!r}")
 
-    def _format_action(self, action: Action) -> Group:
-        # determine the required width and the entry label
-        action_header = self._format_action_invocation(action)
+    # def _get_default_metavar_for_positional(self, action):
+    #     return action.dest
 
-        # collect the pieces of the action help
-        parts = [action_header]
-
-        # if there was help for the action, add lines of help text
-        if action.help:
-            help_text = self._expand_help(action)
-            parts.append(help_text)
-
-        # if there are any sub-actions, add their help as well
-        for subaction in self._iter_subactions(action):
-            parts.append(self._format_action(subaction))
-
-        # return a render group
-        return Group(*parts)
-
-    def _get_default_metavar_for_optional(self, action):
-        return action.dest.upper()
+    # def _get_default_metavar_for_optional(self, action):
+    #     return action.dest.upper()
 
     def _expand_help(self, action: Action) -> Markdown:
         params = dict(vars(action), prog=self._prog)
@@ -461,5 +540,5 @@ class RichFormatter(HelpFormatter):
             params["choices"] = choices_str
         return Markdown(self._get_help_string(action) % params)
 
-    def _get_help_string(self, action):
+    def _get_help_string(self, action: Action) -> str:
         return str(action.help)

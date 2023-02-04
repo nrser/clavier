@@ -1,4 +1,3 @@
-from typing import *
 import sys
 from pathlib import Path
 import json
@@ -6,6 +5,7 @@ from functools import total_ordering
 from textwrap import dedent
 from io import StringIO
 from collections import UserList
+from typing import Callable, TypeGuard
 
 from rich.console import Console, ConsoleRenderable, RichCast, Group
 from rich.theme import Theme
@@ -17,7 +17,7 @@ from rich.syntax import Syntax
 from mdutils.mdutils import MdUtils
 
 from .cfg import CFG
-from . import etc, txt
+from . import etc, txt, cfg
 
 THEME = Theme(
     {
@@ -63,18 +63,17 @@ def header(text, level=1):
     yield NEWLINE
 
 
-def code(code, lexer_name, code_width: Optional[int] = 80, **opts):
+def code(code, lexer_name, code_width: int | None = 80, **opts):
     return Syntax(code, lexer_name, code_width=code_width, **opts)
 
 
-def is_rich(x: Any) -> bool:
+def is_rich(x: object) -> TypeGuard[ConsoleRenderable | RichCast]:
     return isinstance(x, (ConsoleRenderable, RichCast))
 
 
-# @cfg.inject_kwds
-def rel(path: Path, to: Optional[Path] = None) -> Path:
+def rel(path: Path, to: Path | None = None) -> Path:
     if to is None:
-        to = CFG[rel, "to"]
+        (to,) = cfg.extract(CFG[rel], ("to", Path))
     return path.relative_to(to)
 
 
