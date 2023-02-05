@@ -26,11 +26,15 @@ _LOG = splatlog.get_logger(__name__)
 #       on a bunch of sketch things (beyond being hard to read and understand
 #       quickly):
 #
-#       1.  All values that are callable are default getters
-#       2.  Order arguments are added to the `ArgumentParser` providing `values`
-#           (it's `.args`) is the order we end up iterating in here. Otherwise
-#           there's no definition of the iter-dependency chains.
-#       3.  Nothing else messes with the `values` reference we're mutating
+#       1.  All values that are callable are considered default getters.
+#
+#       2.  The order that the arguments were added to the `ArgumentParser`
+#           is the order we end up iterating in here.
+#
+#           Otherwise there's no definition of the iter-dependency chains.
+#
+#       3.  Hope nothing else messes with the `values` reference while we're
+#           mutating it.
 #
 def _resolve_default_getters(values: Dict[str, Any]) -> None:
     for key in values:
@@ -45,7 +49,7 @@ class Sesh:
     A CLI app session
     """
 
-    _LOG = splatlog.get_logger(__name__).getChild("Sesh")
+    _log = splatlog.LoggerProperty()
 
     pkg_name: str
     _parser: ArgumentParser | None = None
@@ -135,8 +139,6 @@ class Sesh:
             verbosity=verbosity,
         )
 
-        _LOG.debug("HERE", verbosity=verbosity)
-
         self._parser = ArgumentParser.create(
             self.description,
             self.init_cmds,
@@ -146,19 +148,17 @@ class Sesh:
 
         return self
 
-    @_LOG.inject
-    def parse(self, *args, log=_LOG, **kwds) -> Sesh:
+    def parse(self, *args, **kwds) -> Sesh:
         self._args = self.parser.parse_args(*args, **kwds)
 
         splatlog.set_verbosity(self._args.verbose)
 
-        log.debug("Parsed arguments", **self._args.__dict__)
+        self._log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
-    @_LOG.inject
-    def run(self, log=_LOG) -> int:
+    def run(self) -> int:
         if not hasattr(self.args, "__target__"):
-            log.error("Missing __target__ arg", self_args=self.args)
+            self._log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")
 
         # Form the call keyword args -- start with a dict of the parsed arguments
@@ -183,12 +183,12 @@ class Sesh:
             return 0
         except Exception as error:
             if self.is_backtracing():
-                log.error(
+                self._log.error(
                     "[holup]Terminating due to unhandled exception[/holup]...",
                     exc_info=True,
                 )
             else:
-                log.error(
+                self._log.error(
                     "Command [uhoh]FAILED[/uhoh].\n\n"
                     f"{type(error).__name__}: {error}\n\n"
                     "Add `--backtrace` to print stack.",
@@ -201,15 +201,15 @@ class Sesh:
         try:
             result.render(self.args.output)
         except KeyboardInterrupt:
-            sys.exit(0)
+            return 0
         except Exception as error:
             if self.is_backtracing():
-                log.error(
+                self._log.error(
                     "[holup]Terminting due to view rendering error[/holup]...",
                     exc_info=True,
                 )
             else:
-                log.error(
+                self._log.error(
                     "Command [uhoh]FAILED[/uhoh].\n\n"
                     f"{type(error).__name__}: {error}\n\n"
                     "Add `--backtrace` to print stack.",
