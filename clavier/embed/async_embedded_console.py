@@ -154,7 +154,8 @@ class AsyncEmbeddedConsole:
 
             self._log.log(
                 level,
-                "System exit during arg parsing",
+                "System exit during arg parsing !!!",
+                parsed_args=self._args,
                 code=error.code,
                 exc_info=sys.exc_info(),
             )
@@ -181,60 +182,42 @@ class AsyncEmbeddedConsole:
                     "Add `--backtrace` to print stack.",
                 )
 
-    @contextmanager
-    def _args_context(self, args: Namespace):
-        if self._args is not None:
-            raise err.InternalError("`_args` already populated")
-
-        self._args = args
-        try:
-            yield
-        finally:
-            self._args = None
+        self._args = None
 
     async def _run_internal(self, argv: list[str]) -> None:
         if not argv:
             # Ignore empty lines (user spamming return key)
             return
 
+        args = self._parser.parse_args(argv)
+
+        # Set here and unset in surrounding `run` so that the exception handlers
+        # there have access to it.
+        self._args = args
+
+        # Form the call keyword args -- start with a dict of the parsed arguments
+        kwds = {**args.__dict__}
+
+        # Remove the global argument names
+        for key in self._parser.action_dests():
+            if key in kwds:
+                del kwds[key]
+
+        # And the `__target__` that holds the target function
         try:
-            args = self._parser.parse_args(argv)
-        except SystemExit as error:
-            level = splatlog.DEBUG if error.code == 0 else splatlog.ERROR
+            target = kwds.pop("__target__")
+        except KeyError:
+            raise err.InternalError("Missing __target__ arg")
 
-            self._log.log(
-                level,
-                "System exit during arg parsing",
-                code=error.code,
-                exc_info=sys.exc_info(),
-            )
+        # Resolve default getters
+        _resolve_default_getters(kwds)
 
-            return
+        if asyncio.iscoroutinefunction(unwrap(target)):
+            result = await target(**kwds)
+        else:
+            result = target(**kwds)
 
-        with self._args_context(args):
+        if not isinstance(result, io.View):
+            result = io.View(result)
 
-            if not hasattr(args, "__target__"):
-                self._log.error("Missing __target__ arg", args=args)
-                raise err.InternalError("Missing __target__ arg")
-
-            # Form the call keyword args -- start with a dict of the parsed arguments
-            kwds = {**args.__dict__}
-            # Remove the global argument names
-            for key in self._parser.action_dests():
-                if key in kwds:
-                    del kwds[key]
-            # And the `__target__` that holds the target function
-            del kwds["__target__"]
-
-            # Resolve default getters
-            _resolve_default_getters(kwds)
-
-            if asyncio.iscoroutinefunction(unwrap(args.__target__)):
-                result = await args.__target__(**kwds)
-            else:
-                result = args.__target__(**kwds)
-
-            if not isinstance(result, io.View):
-                result = io.View(result)
-
-            result.render(args.output)
+        result.render(args.output)
