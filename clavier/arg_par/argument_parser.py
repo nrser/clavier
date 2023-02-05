@@ -1,9 +1,10 @@
 from __future__ import annotations
 from inspect import signature
-from typing import Iterable, Sequence, cast
+from typing import Iterable, NoReturn, Sequence, cast
 import argparse
 from pathlib import Path
 import os
+from gettext import gettext as _
 
 from rich.console import Console
 import splatlog
@@ -220,6 +221,16 @@ class ArgumentParser(argparse.ArgumentParser):
             console = Console(file=file)
         console.print(self.format_rich_help())
 
-    # def exit(self, status: int = 0, message: str | None = None):
-    #     if message:
-    #         self._print_message(message, sys.stderr)
+    def error(self, message: str) -> NoReturn:
+        """Prints a usage message incorporating the message to stderr and
+        exits.
+
+        If you override this in a subclass, it should not return -- it
+        should either exit or raise an exception.
+        """
+        # self.print_usage(sys.stderr)
+        # args = {"prog": self.prog, "message": message}
+        self.exit(2, _(message))
+
+    def exit(self, status: int = 0, message: str | None = None) -> NoReturn:
+        raise err.ParserExit(status, message)

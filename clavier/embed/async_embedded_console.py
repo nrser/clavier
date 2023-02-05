@@ -9,6 +9,9 @@ from inspect import getdoc, signature, unwrap
 
 import splatlog
 from rich.console import Console
+from rich.panel import Panel
+from rich.style import Style
+from rich.padding import Padding
 
 from clavier import arg_par, io, err
 
@@ -149,6 +152,9 @@ class AsyncEmbeddedConsole:
             self._log.debug("Interupted, re-raising", error=error)
             raise
 
+        except err.ParserExit as error:
+            self._handle_parser_exit(error)
+
         except SystemExit as error:
             level = splatlog.DEBUG if error.code == 0 else splatlog.ERROR
 
@@ -157,7 +163,7 @@ class AsyncEmbeddedConsole:
                 "System exit during arg parsing !!!",
                 parsed_args=self._args,
                 code=error.code,
-                exc_info=sys.exc_info(),
+                exc_info=True,
             )
 
         except err.InternalError as error:
@@ -183,6 +189,51 @@ class AsyncEmbeddedConsole:
                 )
 
         self._args = None
+
+    def _handle_parser_exit(self, error: err.ParserExit) -> None:
+        # NOTE  Single call site at this time (2023-02-04); factored-out into
+        #       a separate method to make caller (`run``) easier to read.
+        #
+        self._log.debug(
+            "Handling `ParserExit`...",
+            status=error.status,
+            message=error.message,
+        )
+
+        if error.status == 0:
+            if message := error.message:
+                io.OUT.print(message)
+            return
+
+        is_bt = self.is_backtracing()
+
+        if is_bt:
+            self._log.exception(
+                "Failed to parse arguments",
+                status=error.status,
+                message=error.message,
+            )
+
+        message = "(no message)" if (not error.message) else error.message
+
+        io.ERR.print("Failed to parse arguments", style=Style(italic=True))
+        io.ERR.print(
+            Padding(
+                Panel(
+                    message,
+                    title="ERROR",
+                    border_style=Style(color="red"),
+                    padding=(1, 2),
+                ),
+                (1, 0),
+            )
+        )
+
+        if not is_bt:
+            io.ERR.print(
+                "Enabled backtrace logging with `--backtrace` flag",
+                style=Style(italic=True),
+            )
 
     async def _run_internal(self, argv: list[str]) -> None:
         if not argv:

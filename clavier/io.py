@@ -33,7 +33,6 @@ THEME = Theme(
     }
 )
 
-# TODO  Won't work w/ handoff!!!
 OUT = Console(theme=THEME, file=sys.stdout)
 ERR = Console(theme=THEME, file=sys.stderr)
 
