@@ -46,7 +46,6 @@ class Changeset:
         self.prefix = Key(prefix)
         self.meta = meta
         self.changes = {}
-        self.write_scope = None
 
     def __contains__(self, key: Any) -> bool:
         try:
