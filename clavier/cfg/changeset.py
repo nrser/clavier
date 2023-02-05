@@ -39,6 +39,7 @@ class Changeset:
     #: Hey ya
     prefix: Key
     config: "Config"
+    changes: dict[Key, Any]
 
     def __init__(self, config: "Config", prefix, meta):
         self.config = config
