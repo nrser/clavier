@@ -1,78 +1,20 @@
 from __future__ import annotations
 from inspect import signature
-from typing import Callable, Iterable, Optional, cast
+from typing import Iterable, Sequence, cast
 import argparse
 from pathlib import Path
 import os
-from textwrap import dedent
 
 from rich.console import Console
 import splatlog
 
-from . import io, dyn, err
-from .rich_fmt import RichFormatter
-from .etc import find
+from clavier import io, err
 
-DEFAULT_HOOK_NAMES = (
-    # Preferred name (v0.1.3+)
-    "add_parser",
-    # Legacy name (v0.1.2 and prior)
-    "add_to",
-)
+from .help_error_view import HelpErrorView
+from .rich_help_formatter import RichHelpFormatter
 
-
-class HelpErrorView(io.ErrorView):
-    def render_rich(self):
-        io.render_to_console(self.data.format_rich_help())
-
-    def render_json(self):
-        raise err.UserError("Help not available as JSON")
-
-
-class Subparsers(argparse._SubParsersAction):
-    """
-    Extended to use help as description if the later is missing and handle
-    passing-down `hook_names`.
-    """
-
-    hook_names: Iterable[str]
-
-    def __init__(self, *args, hook_names=DEFAULT_HOOK_NAMES, **kwds):
-        super().__init__(*args, **kwds)
-        self.hook_names = hook_names
-
-    def add_parser(self, name, **kwds) -> ArgumentParser:
-        if "help" in kwds and "description" not in kwds:
-            kwds["description"] = kwds["help"]
-
-        # This is really just to make the type checker cool wit it
-        kwds["hook_names"] = self.hook_names
-
-        return super().add_parser(name, **kwds)
-
-    def add_children(
-        self, module__name__: str, module__path__: Iterable[str]
-    ) -> None:
-        for module in dyn.children_modules(module__name__, module__path__):
-            _invoke_hook(module, self.hook_names, self)
-
-
-THook = Callable[[Subparsers], None]
-
-
-def _find_hook_name(obj: object, hook_names: Iterable[str]) -> Optional[str]:
-    return find(lambda hook_name: hasattr(obj, hook_name), hook_names)
-
-
-def _has_hook(obj: object, hook_names: Iterable[str]) -> bool:
-    return _find_hook_name(obj, hook_names) is not None
-
-
-def _invoke_hook(
-    obj: object, hook_names: Iterable[str], subparsers: Subparsers
-) -> None:
-    if name := _find_hook_name(obj, hook_names):
-        return getattr(obj, name)(subparsers)
+from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
+from .subparsers import Subparsers
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -85,6 +27,7 @@ class ArgumentParser(argparse.ArgumentParser):
         prog: str | None = None,
         hook_names=DEFAULT_HOOK_NAMES,
         autocomplete: bool = True,
+        **kwds,
     ):
         if isinstance(description, Path):
             with description.open("r") as file:
@@ -97,28 +40,27 @@ class ArgumentParser(argparse.ArgumentParser):
         parser = cls(
             prog=prog,
             description=description,
-            notes=dedent(
-                """\
-                You can run
-
-                    eval "$(register-python-argcomplete %(prog)s)"
-
-                in your bash shell to enable tab-completion.
-                """
-            ),
+            # notes=dedent(
+            #     """\
+            #     You can run
+            #         eval "$(register-python-argcomplete %(prog)s)"
+            #     in your bash shell to enable tab-completion.
+            #     """
+            # ),
             hook_names=hook_names,
+            **kwds,
         )
 
         subparsers = parser.add_subparsers(help="Select a command")
 
         # Figure out what was passed for the cmds...
-        if _has_hook(cmds, hook_names):
+        if has_hook(cmds, hook_names):
             # An object that has one of the hook methods, call that
-            _invoke_hook(cmds, hook_names, subparsers)
+            invoke_hook(cmds, hook_names, subparsers)
         elif isinstance(cmds, Iterable):
             # An iterable,
             for cmd in cmds:
-                _invoke_hook(cmd, hook_names, subparsers)
+                invoke_hook(cmd, hook_names, subparsers)
         else:
             # It must be a hook itself (legacy form)
             cmds(subparsers)
@@ -130,16 +72,19 @@ class ArgumentParser(argparse.ArgumentParser):
 
         return parser
 
+    notes: str | None
+    hook_names: Sequence[str]
+
     def __init__(
         self,
         *args,
         target=None,
-        view=io.View,
-        notes=None,
-        hook_names=DEFAULT_HOOK_NAMES,
+        view: type[io.View] = io.View,
+        notes: str | None = None,
+        hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
         **kwds,
     ):
-        super().__init__(*args, formatter_class=RichFormatter, **kwds)
+        super().__init__(*args, formatter_class=RichHelpFormatter, **kwds)
 
         self.notes = notes
         self.hook_names = hook_names
@@ -220,12 +165,12 @@ class ArgumentParser(argparse.ArgumentParser):
     def add_children(self, module__name__, module__path__):
         self.add_subparsers().add_children(module__name__, module__path__)
 
-    def _get_formatter(self) -> RichFormatter:
+    def _get_formatter(self) -> RichHelpFormatter:
         formatter = super()._get_formatter()
-        if not isinstance(formatter, RichFormatter):
+        if not isinstance(formatter, RichHelpFormatter):
             raise TypeError(
                 "expected formatter to be a {}, found a {}: {}".format(
-                    splatlog.lib.fmt(RichFormatter),
+                    splatlog.lib.fmt(RichHelpFormatter),
                     splatlog.lib.fmt_type_of(formatter),
                     splatlog.lib.fmt(formatter),
                 )
@@ -274,3 +219,7 @@ class ArgumentParser(argparse.ArgumentParser):
         else:
             console = Console(file=file)
         console.print(self.format_rich_help())
+
+    # def exit(self, status: int = 0, message: str | None = None):
+    #     if message:
+    #         self._print_message(message, sys.stderr)

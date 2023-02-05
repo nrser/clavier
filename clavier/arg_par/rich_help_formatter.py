@@ -42,7 +42,7 @@ from rich.pretty import Pretty
 from rich.columns import Columns
 import splatlog
 
-from . import io, err
+from clavier import io, err
 
 _LOG = splatlog.get_logger(__name__)
 
@@ -54,22 +54,22 @@ TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
 
 
-class RichFormatter(HelpFormatter):
+class RichHelpFormatter(HelpFormatter):
     """Formatter for `argparse.ArgumentParser` using `rich`.
 
     Adapted from `argparse.HelpFormatter`.
     """
 
     class _Section:
-        formatter: RichFormatter
-        parent: RichFormatter._Section | None
+        formatter: RichHelpFormatter
+        parent: RichHelpFormatter._Section | None
         heading: str | None
         items: list[Callable[[], RenderableType | None]]
 
         def __init__(
             self,
-            formatter: "RichFormatter",
-            parent: RichFormatter._Section | None = None,
+            formatter: RichHelpFormatter,
+            parent: RichHelpFormatter._Section | None = None,
             heading: str | None = None,
         ):
             self.formatter = formatter
