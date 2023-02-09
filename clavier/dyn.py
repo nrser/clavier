@@ -43,9 +43,8 @@ def get_child_module(name, package) -> ModuleType:
     return module
 
 
-@cfg.inject
+# @cfg.inject
 def children_modules(
-    config: Any,
     parent__name__: str,
     parent__path__: Iterable[str],
 ) -> Generator[ModuleType, None, None]:
@@ -54,7 +53,9 @@ def children_modules(
             yield get_child_module(module_info.name, parent__name__)
 
         except Exception:
-            if config.on_error != "warn":
+            config = cfg.current()
+
+            if config[children_modules, "on_error"] != "warn":
                 raise
 
             log_args = (
@@ -66,7 +67,7 @@ def children_modules(
                 module_info.name,
             )
 
-            if cfg.CFG.get(_BACKTRACE_KEY, False):
+            if config.get(_BACKTRACE_KEY, False):
                 _LOG.exception(*log_args)
             else:
                 _LOG.warning(*log_args)

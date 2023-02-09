@@ -16,7 +16,6 @@ from rich.syntax import Syntax
 
 from mdutils.mdutils import MdUtils
 
-from .cfg import CFG
 from . import etc, txt, cfg
 
 THEME = Theme(
@@ -72,7 +71,7 @@ def is_rich(x: object) -> TypeGuard[ConsoleRenderable | RichCast]:
 
 def rel(path: Path, to: Path | None = None) -> Path:
     if to is None:
-        (to,) = cfg.extract(CFG[rel], ("to", Path))
+        to = cfg.current().get_as((rel, "to"), Path)
     return path.relative_to(to)
 
 

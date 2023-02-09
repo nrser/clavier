@@ -1,52 +1,48 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, TypeVar, Union
+from collections.abc import Iterable
 
 from rich.repr import RichReprResult
 
-from .key import Key
+from .key import Key, KeyMatter
+from .config import Config, MutableConfig
 
 if TYPE_CHECKING:
-    from .config import Config
     from .changeset import Changeset
 
 
-class ReadScope:
+class ReadScope(Config):
     """\
     A small adapter providing read access to a particular scope of a Config.
     """
 
-    _base: Union["Config", "Changeset"]
+    _parent: Config
     _key: Key
 
-    def __init__(self, base, key):
-        object.__setattr__(self, "_base", base)
-        object.__setattr__(self, "_key", Key(key))
+    def __init__(self, parent: Config, key: Key):
+        object.__setattr__(self, "_parent", parent)
+        object.__setattr__(self, "_key", key)
 
-    def __contains__(self, name: Any) -> bool:
-        try:
-            return Key(self._key, name) in self._base
-        except Exception:
-            return False
+    def _get_parent_(self) -> Config | None:
+        return self._parent
 
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self._base[Key(self._key, name)]
-        except AttributeError as error:
-            raise error
-        except Exception as error:
-            raise AttributeError(
-                f"`{self.__class__.__name__}` has no attribute {repr(name)}"
-            ) from error
+    def _own_keys_(self) -> Iterable[Key]:
+        return ()
 
-    def __getitem__(self, key: Any) -> Any:
-        try:
-            return self._base[Key(self._key, key)]
-        except KeyError as error:
-            raise error
-        except Exception as error:
-            raise KeyError(
-                f"`{self.__class__.__name__}` has no key {repr(key)}"
-            ) from error
+    def _has_own_(self, key: Key) -> bool:
+        return False
+
+    def _get_own_(self, key: Key) -> Any:
+        raise KeyError("ReadScope does not own any keys")
+
+    def _own_scopes_(self) -> set[Key]:
+        return set()
+
+    def _has_own_scope_(self, scope: Key) -> bool:
+        return False
+
+    def _as_key_(self, key_matter: KeyMatter) -> Key:
+        return Key(self._key, key_matter)
 
     def to_dict(self) -> dict[str, Any]:
         from .config import Config
@@ -71,18 +67,25 @@ class ReadScope:
         yield str(self._key)
 
 
+TWriteScope = TypeVar("TWriteScope", bound="WriteScope")
+
+
 class WriteScope(ReadScope):
     """\
     A scope adapter that funnels writes through to a `Changeset` (in addition
     to facilitating scoped reads).
     """
 
-    _base: "Changeset"
+    _parent: "Changeset"
+
+    def __init__(self, parent: "Changeset", key: Key):
+        super().__init__(parent, key)
+
+    def __setitem__(self, key: KeyMatter, value: Any) -> None:
+        self._parent[self._as_key_(key)] = value
 
     def __setattr__(self, name: str, value: Any) -> None:
-        self._base[Key(self._key, name)] = value
-
-    __setitem__ = __setattr__
+        self._parent[self._as_key_(name)] = value
 
     def __enter__(self) -> WriteScope:
         return self
@@ -90,5 +93,7 @@ class WriteScope(ReadScope):
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         pass
 
-    def configure(self, *key: str, **meta):
-        return self.__class__(base=self._base, key=Key(self._key, key))
+    def configure(
+        self: TWriteScope, *prefix: KeyMatter, **meta: Any
+    ) -> TWriteScope:
+        return self.__class__(parent=self._parent, key=self._as_key_(prefix))

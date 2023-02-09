@@ -1,12 +1,16 @@
 from __future__ import annotations
+from contextvars import ContextVar
 from typing import Iterable, TypeVar, cast, overload
 
-from clavier.cfg.scope import ReadScope
 from typeguard import check_type
 import splatlog
 
-from .config import Config
+from .config import Config, MutableConfig
 from .key import Key
+from .scope import ReadScope, WriteScope
+from .changeset import Changeset
+from .container import Container
+from . import context
 
 T = TypeVar("T")
 _T1 = TypeVar("_T1")
@@ -20,11 +24,16 @@ _T8 = TypeVar("_T8")
 
 _LOG = splatlog.get_logger(__name__)
 SELF_ROOT_KEY = Key(__package__).root
-CFG = Config()
 
-with CFG.configure(SELF_ROOT_KEY, src=__file__) as clavier:
+GLOBAL = context.GLOBAL
+current = context.current
+changeset = context.changeset
+get_as = context.get_as
+
+with GLOBAL.configure(SELF_ROOT_KEY, src=__file__) as clavier:
     clavier.backtrace = False
     clavier.verbosity = 0
+    clavier.output = "rich"
 
     with clavier.configure("log") as log:
         log.level = "WARNING"
@@ -44,7 +53,7 @@ with CFG.configure(SELF_ROOT_KEY, src=__file__) as clavier:
 
 
 def get_root(module_name: str):
-    return CFG[Key(module_name).root]
+    return context.current()[Key(module_name).root]
 
 
 @overload
@@ -96,6 +105,7 @@ def extract(scope: object, *keys):
     return tuple(values)
 
 
-configure = CFG.configure
-get = CFG.get
-inject = CFG.inject
+# configure = CFG.configure
+# get = CFG.get
+# get_as = CFG.get_as
+# inject = CFG.inject

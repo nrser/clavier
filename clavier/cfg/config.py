@@ -1,100 +1,200 @@
 from __future__ import annotations
-from collections import namedtuple
+from abc import ABCMeta, abstractmethod
 from functools import wraps
-import re
 import os
 from typing import (
+    TYPE_CHECKING,
     Any,
-    MutableMapping,
-    Callable,
     ParamSpec,
     Concatenate,
     TypeVar,
+    overload,
 )
+from collections.abc import Mapping, Iterator, Callable, Iterable, KeysView
 
-from sortedcontainers import SortedDict
 import yaml
+from typeguard import check_type
+from clavier.etc.fun import Option, Nada, Some, as_option
 
 from .key import Key, KeyMatter
-from .scope import ReadScope
-from .changeset import Changeset
+
+if TYPE_CHECKING:
+    from .changeset import Changeset
 
 TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
+T = TypeVar("T")
 
 
-class Config:
-    ENV_VAR_NAME_SUB_RE = re.compile(r"[^A-Z0-9]+")
+class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
-    Update = namedtuple("Update", ["changes", "meta"])
+    # Internal API
+    # ========================================================================
 
-    _view: MutableMapping[Key, Any]
+    # Required Methods
+    # ------------------------------------------------------------------------
+    #
+    # These are the ones the realizing classes **must** implement.
+    #
 
-    def __init__(self):
-        self._view = SortedDict()
-        self._updates = []
+    @abstractmethod
+    def _get_parent_(self) -> Config | None:
+        ...
 
-    def configure(self, *prefix, **meta) -> Changeset:
-        return Changeset(config=self, prefix=prefix, meta=meta)
+    @abstractmethod
+    def _own_keys_(self) -> Iterable[Key]:
+        ...
 
-    def configure_root(self, package, **meta) -> Changeset:
-        return Changeset(config=self, prefix=Key(package).root, meta=meta)
+    @abstractmethod
+    def _has_own_(self, key: Key) -> bool:
+        ...
 
-    def env_has(self, key) -> bool:
-        return Key(key).env_name in os.environ
+    @abstractmethod
+    def _get_own_(self, key: Key) -> Any:
+        ...
 
-    def env_get(self, key):
-        value_s = os.environ[Key(key).env_name]
+    # Optional Methods
+    # ------------------------------------------------------------------------
+    #
+    # These have default implementations, but realizing classes may want to
+    # override them if they have a more efficient solution, especially if they
+    # are going to be called often.
+    #
+
+    def _own_scopes_(self) -> set[Key]:
+        own_scopes: set[Key] = set()
+
+        for key in self._own_keys_():
+            own_scopes.update(key.scopes())
+
+        return own_scopes
+
+    def _has_own_scope_(self, scope: Key) -> bool:
+        return any(k.has_scope(scope) for k in self._own_keys_())
+
+    def _as_key_(self, key_matter: KeyMatter) -> Key:
+        return Key(key_matter)
+
+    # Public API
+    # ========================================================================
+
+    # Environment Variables
+    # ------------------------------------------------------------------------
+
+    def env_has(self, key: Key) -> bool:
+        return key.env_name in os.environ
+
+    def env_get(self, key: Key):
+        value_s = os.environ[key.env_name]
         return yaml.safe_load(value_s)
 
-    def __contains__(self, key) -> bool:
-        key = Key(key)
-        if self.env_has(key):
-            return True
-        if key in self._view:
-            return True
-        for k in self._view:
-            if key in k.scopes():
-                return True
-        return False
+    # Scopes
+    # ------------------------------------------------------------------------
+
+    def scopes(self) -> set[Key]:
+        scopes = self._own_scopes_()
+
+        if parent := self._get_parent_:
+            scopes.update(parent.scopes())
+
+        return scopes
+
+    # Collections API
+    # ------------------------------------------------------------------------
+    #
+    # Supports `Config` being a `collections.abc.Mapping`.
+    #
+
+    ### `collections.abc.Iterable` ###
+
+    def __iter__(self) -> Iterator[Key]:
+        yield from self._own_keys_()
+
+        if parent := self._get_parent_():
+            for key in parent:
+                if not self._has_own_(key):
+                    yield key
+
+    ### `collections.abc.Sized` ###
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+    ### `collections.abc.Mapping` ###
 
     def __getitem__(self, key) -> Any:
-        key = Key(key)
+        key = self._as_key_(key)
+
+        # Env vars override all
         if self.env_has(key):
             return self.env_get(key)
-        if key in self._view:
-            return self._view[key]
-        for k in self._view:
-            if key in k.scopes():
-                return ReadScope(base=self, key=key)
+
+        # If this config has the extact key, then return that value
+        if self._has_own_(key):
+            return self._get_own_(key)
+
+        # If the key matches one of the config's own scopes then return a read
+        # scope around it. This needs to be here to deal with overriding a value
+        # in the parent with a scope in this config.
+        if self._has_own_scope_(key):
+            from .scope import ReadScope
+
+            return ReadScope(parent=self, key=key)
+
+        # and check the parent
+        if parent := self._get_parent_():
+            try:
+                return parent[key]
+            except KeyError:
+                pass
 
         raise KeyError(f"Config has no key or scope {repr(key)}")
 
-    def __getattr__(self, name):
+    # Attribute Access
+    # ------------------------------------------------------------------------
+
+    def __getattr__(self, name: str) -> Any:
         try:
             return self[name]
         except AttributeError as error:
             raise error
         except Exception as error:
-            raise AttributeError(
-                f"Not convertible to a Key: {repr(name)}"
-            ) from error
+            raise AttributeError(f"Not found: {repr(name)}") from error
 
-    def get(self, key: KeyMatter, default=None) -> Any:
-        key = Key(key)
-        if key in self:
-            return self[key]
-        return default
+    # Typed Access
+    # ------------------------------------------------------------------------
 
-    def __iter__(self):
-        return iter(self._view)
+    # @overload
+    # def get_as(self, key: KeyMatter, as_a: type[T]) -> T:
+    #     ...
 
-    def update(self, changes, meta) -> None:
-        self._view.update(changes)
-        self._updates.insert(0, self.Update({**changes}, {**meta}))
+    # @overload
+    # def get_as(self, key: KeyMatter, as_a: type[T], default: T) -> T:
+    #     ...
 
-    def to_dict(self):
-        return {str(key): self[key] for key in self._view}
+    # def get_as(self, key: KeyMatter, as_a: type[T], *args, **kwds) -> T:
+    def get_as(
+        self, key: KeyMatter, as_a: type[T], default: Option[T] | T = Nada()
+    ) -> T:
+        default = as_option(default)
+
+        if isinstance(default, Some):
+            value = self.get(key, default.unwrap())
+        else:
+            value = self[key]
+
+        check_type(value, as_a, argname=str(key))
+
+        return value
+
+    # `dict` Materialization
+    # ------------------------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        return {str(key): self[key] for key in self}
+
+    # Updating
+    # ------------------------------------------------------------------------
 
     def inject(
         self, fn: Callable[Concatenate[Any, TParams], TReturn]
@@ -107,3 +207,13 @@ class Config:
             return fn(config, *args, **kwds)
 
         return configured
+
+
+class MutableConfig(Config, metaclass=ABCMeta):
+    @abstractmethod
+    def changeset(self, *prefix: KeyMatter, **meta: Any) -> "Changeset":
+        ...
+
+    @abstractmethod
+    def commit(self, changeset: "Changeset") -> None:
+        ...

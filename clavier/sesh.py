@@ -6,20 +6,28 @@ from inspect import unwrap
 from typing import (
     Any,
     Dict,
+    Sequence,
+    TypeVar,
     Union,
     Optional,
 )
 from pathlib import Path
 import argparse
 import sys
+from contextvars import Context
+
 
 import splatlog
 from rich.console import Console
 
+from .etc.fun import Nada, Option, Some, as_option
 from . import err, io, cfg
 from .arg_par import ArgumentParser
+from .arg_par.argument_parser import Setting
 
 _LOG = splatlog.get_logger(__name__)
+
+T = TypeVar("T")
 
 
 # NOTE  This took very little to write, and works for the moment, but it relies
@@ -55,6 +63,7 @@ class Sesh:
     _parser: ArgumentParser | None = None
     _args: argparse.Namespace | None = None
     _init_cmds: Any
+    _context: Context
 
     def __init__(
         self: Sesh,
@@ -65,6 +74,7 @@ class Sesh:
         self.pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
+        self._context = cfg.context.derived_context()
 
     @property
     def args(self):
@@ -82,30 +92,51 @@ class Sesh:
             raise err.InternalError("Must `setup()` first to populate `parser`")
         return self._parser
 
-    def get_setting(self, name: str, default=None) -> Any:
-        if self._args is not None:
-            return getattr(self._args, name)
-
+    def get_setting(
+        self, name: str, as_a: type[T], default: Option[T] | T = Nada()
+    ) -> T:
         prog_key = cfg.Key(self.pkg_name, name)
-        if prog_key in cfg.CFG:
-            return cfg.CFG[prog_key]
+
+        config = cfg.current()
+
+        if prog_key in config:
+            return config.get_as(prog_key, as_a, default)
 
         self_key = cfg.Key(cfg.SELF_ROOT_KEY, name)
-        if self_key in cfg.CFG:
-            return cfg.CFG[self_key]
+        if self_key in config:
+            return config.get_as(self_key, as_a, default)
 
-        return default
+        match as_option(default):
+            case Some() as some:
+                return some.unwrap()
+            case Nada():
+                raise KeyError(
+                    f"No {name!r} setting configured and no default provided"
+                )
 
     def is_backtracing(self) -> bool:
-        return bool(self.get_setting("backtrace"))
-        # return (
-        #     self.get_arg("backtrace", False)
-        #     or (
-        #         splatlog.get_logger(self.pkg_name).getEffectiveLevel()
-        #         is splatlog.DEBUG
-        #     )
-        #     or self.env("backtrace", False)
-        # )
+        return self.get_setting("backtrace", bool, False)
+
+    def get_parser_settings(self) -> Sequence[Setting]:
+        return [
+            Setting(
+                key=cfg.Key(self.pkg_name, "backtrace"),
+                flags=("-B", "--backtrace"),
+                action="store_true",
+                help="Print backtraces on error",
+            ),
+            Setting(
+                key=cfg.Key(self.pkg_name, "verbosity"),
+                flags=("-V", "--verbose"),
+                action="count",
+                help="Make noise.",
+            ),
+            Setting(
+                key=cfg.Key(self.pkg_name, "output"),
+                flags=("-O", "--output"),
+                help=io.View.help(),
+            ),
+        ]
 
     def setup(
         self,
@@ -114,7 +145,7 @@ class Sesh:
         prog: str | None = None,
     ) -> Sesh:
         if verbosity is None:
-            verbosity = self.get_setting("verbosity", 0)
+            verbosity = self.get_setting("verbosity", splatlog.Verbosity, 0)
 
         console = Console(
             file=sys.stderr,
@@ -144,19 +175,34 @@ class Sesh:
             self.init_cmds,
             autocomplete=autocomplete,
             prog=prog,
+            settings=self.get_parser_settings(),
         )
 
         return self
 
-    def parse(self, *args, **kwds) -> Sesh:
-        self._args = self.parser.parse_args(*args, **kwds)
+    def parse(
+        self,
+        argv: Sequence[str] | None = None,
+    ) -> Sesh:
+        return self._context.run(self._parse, argv)
 
-        splatlog.set_verbosity(self._args.verbose)
+    def _parse(
+        self,
+        argv: Sequence[str] | None = None,
+    ) -> Sesh:
+        self._args = self.parser.parse_args(argv)
+
+        splatlog.set_verbosity(
+            self.get_setting("verbosity", splatlog.Verbosity, 0)
+        )
 
         self._log.debug("Parsed arguments", **self._args.__dict__)
         return self
 
     def run(self) -> int:
+        return self._context.run(self._run)
+
+    def _run(self) -> int:
         if not hasattr(self.args, "__target__"):
             self._log.error("Missing __target__ arg", self_args=self.args)
             raise err.InternalError("Missing __target__ arg")
@@ -199,7 +245,7 @@ class Sesh:
             result = io.View(result)
 
         try:
-            result.render(self.args.output)
+            result.render(self.get_setting("output", str))
         except KeyboardInterrupt:
             return 0
         except Exception as error:

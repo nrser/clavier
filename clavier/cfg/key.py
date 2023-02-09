@@ -1,15 +1,19 @@
 from __future__ import annotations
-from types import ModuleType
-from typing import Generator, Iterable, Type, TypeVar, Union
+from types import FunctionType, ModuleType
+from typing import Callable, Generator, Iterable, Type, TypeVar, Union
 import re
 from inspect import isclass, ismodule, isfunction
 
 # The type of `value` that `Key.split` accepts, which is recursive
 KeyMatter = Union[
+    "Key",
     str,
     bytes,
     type,
     ModuleType,
+    # NOTE  It seems like this _should_ be `types.FunctionType`, but pylance
+    #       doesn't like that. It seems ok with `typing.Callable` though.
+    Callable,
     Iterable["KeyMatter"],
 ]
 
@@ -356,6 +360,16 @@ class Key(tuple[str]):
         ```
         """
         return len(self) == 0
+
+    def has_scope(self, scope: Key) -> bool:
+        if len(scope) >= len(self):
+            return False
+
+        for k_1, k_2 in zip(self, scope):
+            if k_1 != k_2:
+                return False
+
+        return True
 
     def scopes(self: TKey) -> Generator[TKey, None, None]:
         """

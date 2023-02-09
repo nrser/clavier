@@ -1,15 +1,17 @@
 from __future__ import annotations
+from dataclasses import dataclass
 from inspect import signature
-from typing import Iterable, NoReturn, Sequence, cast
+from typing import Any, Iterable, NoReturn, Sequence, cast
 import argparse
 from pathlib import Path
 import os
 from gettext import gettext as _
+from clavier.arg_par.actions import StoreSetting
 
 from rich.console import Console
 import splatlog
 
-from clavier import io, err
+from clavier import io, err, cfg
 
 from .help_error_view import HelpErrorView
 from .rich_help_formatter import RichHelpFormatter
@@ -18,7 +20,17 @@ from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
 from .subparsers import Subparsers
 
 
+@dataclass(frozen=True)
+class Setting:
+    key: cfg.Key
+    flags: tuple[str, ...]
+    action: type[argparse.Action] | str | None = None
+    help: str | None = None
+
+
 class ArgumentParser(argparse.ArgumentParser):
+    _log = splatlog.LoggerProperty()
+
     @classmethod
     def create(
         cls,
@@ -83,6 +95,7 @@ class ArgumentParser(argparse.ArgumentParser):
         view: type[io.View] = io.View,
         notes: str | None = None,
         hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
+        settings: Iterable[Setting] = (),
         **kwds,
     ):
         super().__init__(*args, formatter_class=RichHelpFormatter, **kwds)
@@ -96,34 +109,18 @@ class ArgumentParser(argparse.ArgumentParser):
         else:
             self.set_target(target)
 
-        self.add_argument(
-            "-B",
-            "--backtrace",
-            action="store_true",
-            default=False,
-            help="Print backtraces on error",
-        )
+        for setting in settings:
+            wrapped_action = self._registry_get(
+                "action", setting.action, setting.action
+            )
 
-        # self.add_argument(
-        #     '--log',
-        #     type=str,
-        #     help="File path to write logs to.",
-        # )
-
-        self.add_argument(
-            "-V",
-            "--verbose",
-            default=0,
-            action="count",
-            help="Make noise.",
-        )
-
-        self.add_argument(
-            "-O",
-            "--output",
-            default=view.DEFAULT_FORMAT,
-            help=view.help(),
-        )
+            self.add_argument(
+                *setting.flags,
+                action=StoreSetting,
+                key=setting.key,
+                wrapped_action=wrapped_action,
+                help=setting.help,
+            )
 
     def add_subparsers(self, **kwds) -> Subparsers:
         kwds["hook_names"] = self.hook_names
