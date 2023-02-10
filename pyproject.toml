@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "clavier"
-version = "0.1.5a0"
+version = "0.2.0a0"
 description = "A light and not-so-bright CLI framework for Python"
 authors = [
   "nrser <neil@neilsouza.com>"
