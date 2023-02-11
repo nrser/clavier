@@ -32,7 +32,7 @@ class StoreSetting(Action):
 
         super().__init__(
             option_strings=option_strings,
-            dest=dest,
+            dest=SUPPRESS,
             nargs=self._wrapped_action.nargs,
             const=self._wrapped_action.const,
             default=self._wrapped_action.default,
@@ -61,6 +61,9 @@ class StoreSetting(Action):
 
         with cfg.changeset(action=self, parser=parser) as config:
             config[self._key] = value
+
+        if hasattr(namespace, self.dest):
+            delattr(namespace, self.dest)
 
 
 class _HelpAction(Action):

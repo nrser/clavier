@@ -13,7 +13,6 @@ from rich.repr import RichReprResult
 from sortedcontainers import SortedDict
 
 from .key import Key, KeyMatter
-from .scope import WriteScope
 from .changeset import Changeset
 from .config import Config, MutableConfig
 

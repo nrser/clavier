@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from inspect import signature
-from typing import Any, Iterable, NoReturn, Sequence, cast
+from typing import Any, Callable, Iterable, NoReturn, Sequence, TypeGuard, cast
 import argparse
 from pathlib import Path
 import os
@@ -10,6 +10,7 @@ from clavier.arg_par.actions import StoreSetting
 
 from rich.console import Console
 import splatlog
+from splatlog.lib.text import fmt, fmt_type_of
 
 from clavier import io, err, cfg
 
@@ -18,6 +19,25 @@ from .rich_help_formatter import RichHelpFormatter
 
 from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
 from .subparsers import Subparsers
+
+
+Target = Callable[..., Any]
+
+TARGET_NAME = "__target__"
+
+
+def is_target(value: Any) -> TypeGuard[Target]:
+    return isinstance(value, Callable)
+
+
+def check_target(value: Any) -> Target:
+    if is_target(value):
+        return value
+
+    raise TypeError(
+        f"{TARGET_NAME!r} value is not `typing.Callable`; "
+        f"found {fmt_type_of(value)}: {fmt(value)}"
+    )
 
 
 @dataclass(frozen=True)
@@ -137,13 +157,13 @@ class ArgumentParser(argparse.ArgumentParser):
     def env(self, name, default=None):
         return os.environ.get(self.env_var_name(name), default)
 
-    def get_target(self):
-        # return self.get_default("__target__")
-        return self._defaults["__target__"]
+    def get_target(self) -> Target:
+        # same as: `return self.get_default("__target__")`
+        return check_target(self._defaults[TARGET_NAME])
 
-    def set_target(self, target):
-        # self.set_defaults(__target__=target)
-        self._defaults["__target__"] = target
+    def set_target(self, target: Target) -> None:
+        # same as: `self.set_defaults(__target__=target)`
+        self._defaults["__target__"] = check_target(target)
 
         self.set_defaults(
             **{

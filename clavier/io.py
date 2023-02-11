@@ -71,7 +71,7 @@ def is_rich(x: object) -> TypeGuard[ConsoleRenderable | RichCast]:
 
 def rel(path: Path, to: Path | None = None) -> Path:
     if to is None:
-        to = cfg.current().get_as((rel, "to"), Path)
+        to = cfg.current()[{(rel, "to"): Path}]
     return path.relative_to(to)
 
 

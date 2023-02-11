@@ -7,7 +7,7 @@ import splatlog
 
 from .config import Config, MutableConfig
 from .key import Key
-from .scope import ReadScope, WriteScope
+from .scope import Scope, MutableScope
 from .changeset import Changeset
 from .container import Container
 from . import context
@@ -92,8 +92,8 @@ def extract(
 
 
 def extract(scope: object, *keys):
-    check_type(scope, Config | ReadScope, argname="scope")
-    scope = cast(Config | ReadScope, scope)
+    check_type(scope, Config | Scope, argname="scope")
+    scope = cast(Config | Scope, scope)
 
     values = []
 

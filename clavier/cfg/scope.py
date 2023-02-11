@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .changeset import Changeset
 
 
-class ReadScope(Config):
+class Scope(Config):
     """\
     A small adapter providing read access to a particular scope of a Config.
     """
@@ -67,10 +67,10 @@ class ReadScope(Config):
         yield str(self._key)
 
 
-TWriteScope = TypeVar("TWriteScope", bound="WriteScope")
+TMutableScope = TypeVar("TMutableScope", bound="MutableScope")
 
 
-class WriteScope(ReadScope):
+class MutableScope(Scope):
     """\
     A scope adapter that funnels writes through to a `Changeset` (in addition
     to facilitating scoped reads).
@@ -87,13 +87,13 @@ class WriteScope(ReadScope):
     def __setattr__(self, name: str, value: Any) -> None:
         self._parent[self._as_key_(name)] = value
 
-    def __enter__(self) -> WriteScope:
+    def __enter__(self) -> MutableScope:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         pass
 
     def configure(
-        self: TWriteScope, *prefix: KeyMatter, **meta: Any
-    ) -> TWriteScope:
+        self: TMutableScope, *prefix: KeyMatter, **meta: Any
+    ) -> TMutableScope:
         return self.__class__(parent=self._parent, key=self._as_key_(prefix))

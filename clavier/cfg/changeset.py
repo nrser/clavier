@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from collections.abc import Mapping, Iterable
 
 from .key import Key, KeyMatter
-from .scope import ReadScope, WriteScope
+from .scope import MutableScope
 from .config import Config, MutableConfig
 
 
@@ -76,8 +76,8 @@ class Changeset(Config):
         # Items are always set in the changes
         self.changes[key] = value
 
-    def __enter__(self) -> WriteScope:
-        return WriteScope(parent=self, key=self.prefix)
+    def __enter__(self) -> MutableScope:
+        return MutableScope(parent=self, key=self.prefix)
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         if exc_type is None and exc_value is None and traceback is None:

@@ -1,26 +1,67 @@
 from __future__ import annotations
+from functools import total_ordering
 from types import FunctionType, ModuleType
-from typing import Callable, Generator, Iterable, Type, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Iterable,
+    Mapping,
+    Type,
+    TypeGuard,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 import re
 from inspect import isclass, ismodule, isfunction
+from collections.abc import Sequence, Iterator
 
-# The type of `value` that `Key.split` accepts, which is recursive
-KeyMatter = Union[
-    "Key",
-    str,
-    bytes,
-    type,
-    ModuleType,
-    # NOTE  It seems like this _should_ be `types.FunctionType`, but pylance
-    #       doesn't like that. It seems ok with `typing.Callable` though.
-    Callable,
-    Iterable["KeyMatter"],
-]
+if TYPE_CHECKING:
+    from .scope import Scope
+
+T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
+V = TypeVar("V")
+
+#: What you can make a `Key` out of. It is type of `value` that `Key.split`
+#: accepts, which is recursive across `collection.abc.Sequence`.
+#:
+#: This _used_ to be
+#:
+#:       KeyMatter = Union[
+#:           "Key",
+#:           str,
+#:           bytes,
+#:           type,
+#:           ModuleType,
+#:           # NOTE  It seems like this _should_ be `types.FunctionType`, but pylance
+#:           #       doesn't like that. It seems ok with `typing.Callable` though.
+#:           Callable,
+#:           Sequence["KeyMatter"],
+#:       ]
+#:
+#: but PyLance couldn't infer the `__new__(dict[KeyMatter, type[T]])` part, so
+#: now it's just `typing.Any`, which seems to work.
+#:
+KeyMatter = Any
 
 TKey = TypeVar("TKey", bound="Key")
 
 
-class Key(tuple[str]):
+def is_key_matter(x: object) -> TypeGuard[KeyMatter]:
+    if isinstance(x, (Key, str, bytes, type, ModuleType, FunctionType)):
+        return True
+    if isinstance(x, Sequence):
+        return all(is_key_matter(e) for e in x)
+    return False
+
+
+@total_ordering
+class Key(Sequence[str], Generic[T]):
     """
     A configuration key.
 
@@ -55,16 +96,14 @@ class Key(tuple[str]):
     >>> Key(".a.b")
     Traceback (most recent call last):
         ...
-    KeyError: "'.a.b' not convertible to a Key:
-        each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
-        found '' in '.a.b'"
+    ValueError: each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+        found '' in '.a.b'
 
     >>> Key("a..b")
     Traceback (most recent call last):
         ...
-    KeyError: "'a..b' not convertible to a Key:
-        each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
-        found '' in 'a..b'"
+    ValueError: each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+        found '' in 'a..b'
 
     ```
     """
@@ -202,7 +241,7 @@ class Key(tuple[str]):
             #       cfg[what.ever.SomeClass, "default_value"]
             #       -> Key("what", "ever", "SomeClass", "default_value")
             #
-            yield from cls.split((value.__module__, value.__name__))
+            yield from cls.split((value.__module__, value.__qualname__))
         elif ismodule(value):
             # Allows you to use modules, like
             #
@@ -220,41 +259,97 @@ class Key(tuple[str]):
                 f"given {type(value)}: {repr(value)}"
             )
 
-    def __new__(cls, *values: KeyMatter):
+    @classmethod
+    def parse_init_args(
+        cls, args: tuple[Any, ...], kwds: dict[str, Any]
+    ) -> tuple[KeyMatter, type[T]]:
+        match (args, tuple(kwds.items())):
+            # __new__(cls, __key: Key[T]) -> Key[T]
+
+            case ((Key() as key,), ()):
+                return key._parts, key._v_type
+
+            # __new__(cls, __key_v_type: dict[KeyMatter, type[T]]) -> Key[T]
+
+            case ((a_0,), ()) if isinstance(a_0, dict):
+                match tuple(a_0.items()):
+                    case (((parts,), v_type),) | (([parts], v_type),):
+                        return parts, v_type
+
+                    case ((parts, v_type),):
+                        return parts, v_type
+
+                raise TypeError("bad dict")
+
+            # __new__(cls, *parts: KeyMatter, v_type: type[T]) -> Key[T]
+
+            case ((parts,), (("v_type", v_type),)):
+                return parts, v_type
+
+            case (parts, (("v_type", v_type),)):
+                return parts, v_type
+
+            # __new__(cls, *parts: KeyMatter) -> Key[Any]
+
+            case ((parts,), ()):
+                return parts, Any
+
+            case (parts, ()):
+                return parts, Any
+        raise TypeError("here'")
+
+    @overload
+    def __new__(cls, __key: Key[T]) -> Key[T]:
+        ...
+
+    @overload
+    def __new__(cls, __key_v_type: dict[KeyMatter, type[T]]) -> Key[T]:
+        ...
+
+    @overload
+    def __new__(cls, *parts: KeyMatter, v_type: type[T]) -> Key[T]:
+        ...
+
+    @overload
+    def __new__(cls, *parts: KeyMatter) -> Key[Any]:
+        ...
+
+    def __new__(cls, *args, **kwds):
         """Construct a `Key`.
 
         Since keys are tuples, and tuples are immutable, an optimization is
         performed to simply return any sole `Key` instance argument.
         """
         # Special-case single argument calls
-        if len(values) == 1:
-            if isinstance(values[0], cls):
-                # Called with a single `Key`. Since they're immutable we just
-                # return it back.
-                return values[0]
-            else:
-                # Little touch to make it nicer to read errors when providing a
-                # single argument -- just normalize that argument, rather than
-                # a `tuple` with only one member
-                _values = values[0]
-        else:
-            _values = values
+        # if len(values) == 1:
+        #     if (
+        #         isinstance(values[0], cls)
+        #         and values[0]._value_type is value_type
+        #     ):
+        #         # Called with a single `Key`. Since they're immutable we just
+        #         # return it back.
+        #         return values[0]
 
-        try:
-            return tuple.__new__(cls, cls.normalize(_values))
-        except (KeyError, KeyboardInterrupt, SystemExit):
-            raise
-        except Exception as error:
-            # Honestly, tacking the source error's message on the end is due to
-            # not being able to get `doctest` to match against a chained error,
-            # but whatever, I can live with it (2022-11-20).
-            #
-            # The source error is chained on so the user has a useful stack
-            # trace to where the problem ocurred if needed.
-            #
-            raise KeyError(
-                f"{_values!r} not convertible to a Key: {error}"
-            ) from error
+        return super().__new__(cls)
+
+    _v_type: type[T]
+    _parts: tuple[str, ...]
+
+    def __init__(self, *args, **kwds):
+        parts, v_type = self.parse_init_args(args, kwds)
+        self._parts = tuple(self.normalize(parts))
+        self._v_type = v_type
+
+    # Properties
+    # ========================================================================
+
+    @property
+    def v_type(self) -> type[T]:
+        return self._v_type
+
+    @property
+    def parts(self) -> tuple[str, ...]:
+        return self._parts
 
     @property
     def env_name(self):
@@ -291,7 +386,7 @@ class Key(tuple[str]):
         return "_".join(self).upper()
 
     @property
-    def root(self) -> Key:
+    def root(self) -> Key[Any]:
         """
         Get the root key.
 
@@ -308,7 +403,10 @@ class Key(tuple[str]):
         """
         if self.is_empty():
             raise IndexError("The empty Key has no root")
-        return self.__class__(self[0])
+        return self.__class__(self[0], v_type=Any)
+
+    # Dunders
+    # ========================================================================
 
     def __repr__(self) -> str:
         """\
@@ -325,7 +423,15 @@ class Key(tuple[str]):
 
         ```
         """
-        return "Key(" + ", ".join(repr(s) for s in self) + ")"
+        s = ", ".join(repr(s) for s in self._parts)
+
+        if self._v_type is not Any:
+            if isclass(self._v_type):
+                s += f", v_type={self._v_type.__name__}"
+            else:
+                s += f", v_type={self._v_type!r}"
+
+        return "Key(" + s + ")"
 
     def __str__(self):
         """\
@@ -344,117 +450,49 @@ class Key(tuple[str]):
         """
         return self.STRING_SEPARATOR.join(self)
 
-    def is_empty(self) -> bool:
-        """\
-        Is this key empty?
-
-        Examples:
-
-        ```python
-        >>> Key().is_empty()
-        True
-
-        >>> Key("a.b.c").is_empty()
-        False
-
-        ```
-        """
-        return len(self) == 0
-
-    def has_scope(self, scope: Key) -> bool:
-        if len(scope) >= len(self):
-            return False
-
-        for k_1, k_2 in zip(self, scope):
-            if k_1 != k_2:
-                return False
-
-        return True
-
-    def scopes(self: TKey) -> Generator[TKey, None, None]:
-        """
-        Yield a each key-scope that this `Key` belongs to.
-
-        ##### Examples #####
-
-        ```python
-        >>> list(Key("a.b.c.d").scopes())
-        [Key('a'), Key('a', 'b'), Key('a', 'b', 'c')]
-
-        ```
-
-        It's always true that
-
-            len(list(k.scopes())) == len(k) - 1
-
-        for any key _non-empty_ `k`.
-
-        Empty keys have no scopes:
-
-        ```python
-        >>> list(Key().scopes()) == []
-        True
-
-        ```
-
-        Same as keys of length 1:
-
-        ```python
-        >>> list(Key("blah").scopes()) == []
-        True
-
-        ```
-        """
-        for stop in range(1, len(self)):
-            yield self.__class__(self[0:stop])
-
-    # Modifying Keys
+    # Hashable
     # ------------------------------------------------------------------------
-    #
-    # As keys are immutable, all methods return a _new_ instance.
-    #
 
-    def append(self: TKey, *key) -> TKey:
-        """
-        Add to the end of a key.
+    def __hash__(self) -> int:
+        return hash(self._parts)
 
-        ##### Examples #####
+    # Comparable
+    # ------------------------------------------------------------------------
 
-        ```python
-        >>> Key("a.b").append("c")
-        Key('a', 'b', 'c')
+    def __lt__(self, __x: Key) -> bool:
+        return self._parts < __x._parts
 
-        >>> Key("a.b").append("c.d", "e")
-        Key('a', 'b', 'c', 'd', 'e')
+    def __le__(self, __x: Key) -> bool:
+        return self._parts <= __x._parts
 
-        ```
-        """
-        return self.__class__(self, key)
+    def __eq__(self, __o: object) -> bool:
+        return isinstance(__o, Key) and self._parts == __o._parts
 
-    #: Support alternative name for `append`, similar to `list`.
-    #:
-    #: Due to how `normalize` works the difference between `list.append` (takes
-    #: a single entry) and `list.extend` (takes an iterable of entries) is not
-    #: present so we can simple alias one to the other.
-    #:
-    extend = append
+    def __gt__(self, __x: Key) -> bool:
+        return self._parts > __x._parts
 
-    def prepend(self: TKey, *key) -> TKey:
-        """
-        Add to the begining of a key.
+    def __ge__(self, __x: Key) -> bool:
+        return self._parts >= __x._parts
 
-        ##### Examples #####
+    # `collections.abc.Sequence`
+    # ------------------------------------------------------------------------
 
-        ```python
-        >>> Key("c.d").prepend("a.b")
-        Key('a', 'b', 'c', 'd')
+    def __len__(self) -> int:
+        return len(self._parts)
 
-        >>> Key("d").prepend(Key("a"), Key("b.c"))
-        Key('a', 'b', 'c', 'd')
+    @overload
+    def __getitem__(self, index: int) -> str:
+        ...
 
-        ```
-        """
-        return self.__class__(key, self)
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[str]:
+        ...
+
+    def __getitem__(self, index):
+        return self._parts[index]
+
+    # `/` Operator — `pathlib.Path`-Like Combination
+    # ------------------------------------------------------------------------
 
     def __truediv__(self: TKey, key) -> TKey:
         """
@@ -486,6 +524,168 @@ class Key(tuple[str]):
         >>> "a.b" / Key("c")
         Key('a', 'b', 'c')
 
+        >>> "a.b" / Key("c", v_type=int)
+        Key('a', 'b', 'c', v_type=int)
+
         ```
         """
         return self.prepend(key)
+
+    # Custom API
+    # ============================================================================
+
+    def is_empty(self) -> bool:
+        """\
+        Is this key empty?
+
+        Examples:
+
+        ```python
+        >>> Key().is_empty()
+        True
+
+        >>> Key("a.b.c").is_empty()
+        False
+
+        ```
+        """
+        return len(self) == 0
+
+    def has_scope(self, scope: Key) -> bool:
+        if len(scope) >= len(self):
+            return False
+
+        for k_1, k_2 in zip(self, scope):
+            if k_1 != k_2:
+                return False
+
+        return True
+
+    def scopes(self) -> Generator[Key["Scope"], None, None]:
+        """
+        Yield a each key-scope that this `Key` belongs to, which have a `v_type`
+        of `Scope`.
+
+        ##### Examples #####
+
+        ```python
+        >>> list(Key("a.b.c.d").scopes())
+        [Key('a', v_type=Scope),
+            Key('a', 'b', v_type=Scope),
+            Key('a', 'b', 'c', v_type=Scope)]
+
+        ```
+
+        It's always true that
+
+            len(list(k.scopes())) == len(k) - 1
+
+        for any key _non-empty_ `k`.
+
+        Empty keys have no scopes:
+
+        ```python
+        >>> list(Key().scopes()) == []
+        True
+
+        ```
+
+        Same as keys of length 1:
+
+        ```python
+        >>> list(Key("blah").scopes()) == []
+        True
+
+        ```
+        """
+        from .scope import Scope
+
+        for stop in range(1, len(self)):
+            yield cast(Key[Scope], self.__class__(self[0:stop], v_type=Scope))
+
+    # Modifying Keys
+    # ------------------------------------------------------------------------
+    #
+    # As keys are immutable, all methods return a _new_ instance.
+    #
+
+    @overload
+    def append(self, __key: Key[V]) -> Key[V]:
+        ...
+
+    @overload
+    def append(self, __key_v_type: dict[KeyMatter, type[V]]) -> Key[V]:
+        ...
+
+    @overload
+    def append(self, *parts: KeyMatter, v_type: type[V]) -> Key[V]:
+        ...
+
+    @overload
+    def append(self, *parts: KeyMatter) -> Key[Any]:
+        ...
+
+    def append(self, *args, **kwds):
+        """
+        Add to the end of a key. `v_type` assumed from the appended key, unless
+        specified.
+
+        ##### Examples #####
+
+        ```python
+        >>> Key("a.b").append("c")
+        Key('a', 'b', 'c')
+
+        >>> Key("a.b").append("c.d", "e")
+        Key('a', 'b', 'c', 'd', 'e')
+
+        ```
+
+        The _value type_ (`v_type`) of the resulting key assumes the
+        _value type_ of the appended key (opposite of how `prepend` works),
+        unless a new _value type_ is specified (same forms as `__new__`).
+
+        ```python
+        >>> Key("a.b").append("c").v_type
+        typing.Any
+
+        >>> Key("a.b").append(Key("c", v_type=int))
+        Key('a', 'b', 'c', v_type=int)
+
+        >>> Key("a.b").append("c.d", "e", v_type=int)
+        Key('a', 'b', 'c', 'd', 'e', v_type=int)
+
+        >>> Key("a.b").append({('c.d', 'e'): int})
+        Key('a', 'b', 'c', 'd', 'e', v_type=int)
+
+        ```
+
+        """
+        parts, v_type = self.parse_init_args(args, kwds)
+        return cast(Key[V], self.__class__(self, parts, v_type=v_type))
+
+    #: Support alternative name for `append`, similar to `list`.
+    #:
+    #: Due to how `normalize` works the difference between `list.append` (takes
+    #: a single entry) and `list.extend` (takes an iterable of entries) is not
+    #: present so we can simple alias one to the other.
+    #:
+    extend = append
+
+    def prepend(self, *key: KeyMatter) -> Key[T]:
+        """
+        Add to the begining of a key. `v_type` assumed from this key, unless
+        specified.
+
+        ##### Examples #####
+
+        ```python
+        >>> Key("c.d").prepend("a.b")
+        Key('a', 'b', 'c', 'd')
+
+        >>> Key("d").prepend(Key("a"), Key("b.c"))
+        Key('a', 'b', 'c', 'd')
+
+        ```
+        """
+        return self.__class__(key, self, v_type=self._v_type)

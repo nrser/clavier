@@ -8,13 +8,16 @@ from typing import (
     ParamSpec,
     Concatenate,
     TypeVar,
+    cast,
     overload,
 )
 from collections.abc import Mapping, Iterator, Callable, Iterable, KeysView
 
+from splatlog.lib.typeguard import satisfies
+from splatlog.lib.text import fmt, fmt_type_of
 import yaml
-from typeguard import check_type
 from clavier.etc.fun import Option, Nada, Some, as_option
+from clavier import etc
 
 from .key import Key, KeyMatter
 
@@ -75,6 +78,18 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
     def _as_key_(self, key_matter: KeyMatter) -> Key:
         return Key(key_matter)
 
+    def _check_type_(self, key: Key[T], value: object) -> T:
+        """Verify that a `value` — which has presumably been retrieved from the
+        `Config` — has the appropriate type given the `key` used to retreive it.
+        """
+
+        if satisfies(value, key.v_type):
+            return value
+        raise TypeError(
+            f"expected config value {key!s} to be {fmt(key.v_type)}; "
+            f"found {fmt_type_of(value)}: {fmt(value)}"
+        )
+
     # Public API
     # ========================================================================
 
@@ -84,9 +99,8 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
     def env_has(self, key: Key) -> bool:
         return key.env_name in os.environ
 
-    def env_get(self, key: Key):
-        value_s = os.environ[key.env_name]
-        return yaml.safe_load(value_s)
+    def env_get(self, key: Key[T]) -> T:
+        return etc.env.get_as(key.env_name, key.v_type)
 
     # Scopes
     # ------------------------------------------------------------------------
@@ -122,8 +136,41 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
     ### `collections.abc.Mapping` ###
 
-    def __getitem__(self, key) -> Any:
-        key = self._as_key_(key)
+    @overload
+    def __getitem__(self, __key: Key[T], /) -> T:
+        """Get an item of type `T` by providing a typed `Key[T]`.
+
+        ```python
+        v: int = config[Key("a.b.c", v_type=int)]
+        ```
+        """
+        ...
+
+    @overload
+    def __getitem__(self, __key: dict[KeyMatter, type[T]], /) -> T:
+        """Get an item of type `T` by providing a `dict` with a _single_
+        key/value pair (a constrain which can not be represented in the type
+        signature at this time) of `KeyMatter => type[T]`.
+
+        ```python
+        v: int = config[{"a.b.c": int}]
+        ```
+
+        """
+        ...
+
+    @overload
+    def __getitem__(self, __key: KeyMatter, /) -> Any:
+        """Get an untyped (`typing.Any`) value using `KeyMatter`.
+
+        ```python
+        v: Any = config["a.b.c"]
+        ```
+        """
+        ...
+
+    def __getitem__(self, __key, /):
+        key = self._as_key_(__key)
 
         # Env vars override all
         if self.env_has(key):
@@ -131,15 +178,15 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
         # If this config has the extact key, then return that value
         if self._has_own_(key):
-            return self._get_own_(key)
+            return self._check_type_(key, self._get_own_(key))
 
         # If the key matches one of the config's own scopes then return a read
         # scope around it. This needs to be here to deal with overriding a value
         # in the parent with a scope in this config.
         if self._has_own_scope_(key):
-            from .scope import ReadScope
+            from .scope import Scope
 
-            return ReadScope(parent=self, key=key)
+            return self._check_type_(key, Scope(parent=self, key=key))
 
         # and check the parent
         if parent := self._get_parent_():
@@ -160,32 +207,6 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
             raise error
         except Exception as error:
             raise AttributeError(f"Not found: {repr(name)}") from error
-
-    # Typed Access
-    # ------------------------------------------------------------------------
-
-    # @overload
-    # def get_as(self, key: KeyMatter, as_a: type[T]) -> T:
-    #     ...
-
-    # @overload
-    # def get_as(self, key: KeyMatter, as_a: type[T], default: T) -> T:
-    #     ...
-
-    # def get_as(self, key: KeyMatter, as_a: type[T], *args, **kwds) -> T:
-    def get_as(
-        self, key: KeyMatter, as_a: type[T], default: Option[T] | T = Nada()
-    ) -> T:
-        default = as_option(default)
-
-        if isinstance(default, Some):
-            value = self.get(key, default.unwrap())
-        else:
-            value = self[key]
-
-        check_type(value, as_a, argname=str(key))
-
-        return value
 
     # `dict` Materialization
     # ------------------------------------------------------------------------
