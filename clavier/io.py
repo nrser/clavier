@@ -5,18 +5,32 @@ from functools import total_ordering
 from textwrap import dedent
 from io import StringIO
 from collections import UserList
-from typing import Callable, TypeGuard
+from typing import Callable, Generic, TypeGuard, TypeVar, overload
 
-from rich.console import Console, ConsoleRenderable, RichCast, Group
+from rich.console import (
+    Console,
+    ConsoleRenderable,
+    RichCast,
+    Group,
+    RenderableType,
+)
 from rich.theme import Theme
 from rich.pretty import Pretty
 from rich.rule import Rule
-from rich.text import Text
+from rich.text import Text, TextType
 from rich.syntax import Syntax
+from rich.style import Style as _S
+from rich.panel import Panel
+from rich.padding import Padding, PaddingDimensions
+from rich.traceback import Traceback
 
 from mdutils.mdutils import MdUtils
 
-from . import etc, txt, cfg
+from . import etc, txt, cfg, err
+
+
+TData = TypeVar("TData")
+
 
 THEME = Theme(
     {
@@ -29,8 +43,13 @@ THEME = Theme(
         "todo": "bold yellow",
         "h": "bold blue",
         "rule.h": "blue",
+        "panel.error.title": _S(color="red", bold=True),
+        "panel.error.context": _S(italic=True, dim=True),
+        "panel.error.subtitle": _S(color="red", dim=True),
+        "panel.error.border": _S(color="red"),
     }
 )
+
 
 OUT = Console(theme=THEME, file=sys.stdout)
 ERR = Console(theme=THEME, file=sys.stderr)
@@ -55,10 +74,66 @@ NEWLINE = Text("\n", end="")
 #     yield NEWLINE
 
 
+def as_traceback(error: BaseException) -> Traceback:
+    return Traceback.from_exception(
+        type(error),
+        error,
+        error.__traceback__,
+    )
+
+
+@overload
+def _as_error_panel_text(text: None, style_key: str) -> None:
+    ...
+
+
+@overload
+def _as_error_panel_text(text: TextType, style_key: str) -> Text:
+    ...
+
+
+def _as_error_panel_text(text, style_key):
+    if text is None or isinstance(text, Text):
+        return text
+    return Text(text, f"panel.error.{style_key}")
+
+
+def error_panel(
+    *renderables: RenderableType,
+    margin: PaddingDimensions = (1, 0),
+    padding: PaddingDimensions = (0, 1, 1, 1),
+    title: TextType | None = None,
+    subtitle: TextType | None = None,
+    context: TextType | None = None,
+) -> RenderableType:
+    body = Grouper()
+
+    if context is not None:
+        body.append(_as_error_panel_text(context, "context"))
+        body.append(NEWLINE)
+
+    body.extend(renderables)
+
+    panel = Panel(
+        body.to_group(),
+        title=_as_error_panel_text(title, "title"),
+        subtitle=_as_error_panel_text(subtitle, "subtitle"),
+        border_style="panel.error.border",
+        padding=padding,
+    )
+
+    if (isinstance(margin, int) and margin != 0) or (
+        isinstance(margin, tuple) and any(n != 0 for n in margin)
+    ):
+        return Padding(panel, margin)
+
+    return panel
+
+
 def header(text, level=1):
     yield Text(text, style="h")
     yield Rule(style="rule.h")
-    yield NEWLINE
+    # yield NEWLINE # removed -- tighten it up a bit, make usage look nicer
 
 
 def code(code, lexer_name, code_width: int | None = 80, **opts):
@@ -179,12 +254,12 @@ class ViewFormat:
         return title + " -- " + self.help
 
 
-class View:
+class View(Generic[TData]):
     DEFAULT_FORMAT = "rich"
 
     @classmethod
-    def formats(cls):
-        def create(attr_name):
+    def formats(cls) -> list[ViewFormat]:
+        def create(attr_name: str) -> ViewFormat:
             fn = getattr(cls, attr_name)
             name = attr_name.replace("render_", "")
             return ViewFormat(name, fn, cls.DEFAULT_FORMAT == name)
@@ -211,26 +286,40 @@ class View:
 
         return builder.file_data_text
 
-    def __init__(self, data, *, return_code: int = 0, console: Console = OUT):
+    data: TData
+    return_code: int
+    out: Console
+    err: Console
+
+    def __init__(
+        self,
+        data: TData,
+        *,
+        return_code: int = 0,
+        out: Console = OUT,
+        err: Console = ERR,
+    ):
         self.data = data
         self.return_code = return_code
-        self.console = console
+        self.out = out
+        self.err = err
 
     def print(self, *args, **kwds):
-        self.console.print(*args, **kwds)
+        self.out.print(*args, **kwds)
 
-    def render(self, format=DEFAULT_FORMAT):
+    def render(self, format: str = DEFAULT_FORMAT):
         method_name = f"render_{format}"
-        method = getattr(self, method_name)
+        method = getattr(self, method_name, None)
 
         if method is None:
             raise RuntimeError(
-                f"ViewFormat format {format} not supported by {self.__class__} "
-                "view (method `{method_name}` does not exist)"
+                f"format {format} not supported by view {self.__class__} "
+                f"(method `{method_name}` does not exist)"
             )
+
         if not callable(method):
-            raise RuntimeError(
-                f"Internal error -- found attribute `{method_name}` on "
+            raise err.InternalError(
+                f"found attribute `{method_name}` on "
                 f"{self.__class__} view, but it is not callable."
             )
 
@@ -248,12 +337,19 @@ class View:
 
         [rich]: https://rich.readthedocs.io/en/stable/
         """
-        render_to_console(self.data, console=self.console)
+        render_to_console(self.data, console=self.out)
 
 
-class ErrorView(View):
-    def __init__(self, data, *, return_code: int = 1, console: Console = ERR):
-        super().__init__(data, return_code=return_code, console=console)
+# class ErrorView(View):
+#     def __init__(
+#         self,
+#         data,
+#         *,
+#         return_code: int = 1,
+#         out: Console = OUT,
+#         err: Console = ERR,
+#     ):
+#         super().__init__(data, return_code=return_code, out=out, err=err)
 
 
 if __name__ == "__main__":

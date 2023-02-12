@@ -1,6 +1,8 @@
 from argparse import OPTIONAL, Action, SUPPRESS, Namespace
 from typing import TYPE_CHECKING, Any, Sequence
 
+import splatlog
+
 from clavier import cfg
 
 if TYPE_CHECKING:
@@ -8,6 +10,8 @@ if TYPE_CHECKING:
 
 
 class StoreSetting(Action):
+    _log = splatlog.LoggerProperty()
+
     _key: cfg.Key
     _wrapped_action: Action
     _wrapped_namespace: Namespace
@@ -18,7 +22,7 @@ class StoreSetting(Action):
         dest: str,
         key: cfg.Key,
         wrapped_action: type[Action],
-        **kwds,
+        **kwds
     ):
         self._key = key
 
@@ -40,8 +44,19 @@ class StoreSetting(Action):
             choices=self._wrapped_action.choices,
             required=self._wrapped_action.required,
             help=self._wrapped_action.help,
-            metavar=self._wrapped_action.metavar,
+            # Since we inject `dest=SUPPRESS` to avoid this action's value
+            # being added to the parsed `Namespace` we want to explicitly
+            # default the `metavar`, otherwise you'll see things like
+            #
+            #       -O ==SUPPRESS==
+            #
+            # in the help output.
+            metavar=(self._wrapped_action.metavar or dest.upper()),
         )
+
+    @property
+    def _splatlog_self_(self) -> Any:
+        return self._key
 
     @property
     def _wrapped_dest(self) -> str:
@@ -54,6 +69,8 @@ class StoreSetting(Action):
         values: str | Sequence[Any] | None,
         option_string: str | None = None,
     ):
+        self._log.debug("Invoking action...")
+
         self._wrapped_action(
             parser, self._wrapped_namespace, values, option_string
         )

@@ -29,15 +29,18 @@ from contextlib import contextmanager
 
 
 import splatlog
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.style import Style
 from rich.padding import Padding
+from rich.traceback import Traceback
+from rich.text import Text
 
 from .etc.fun import Nada, Option, Some, as_option
 from . import err, io, cfg
 from .arg_par import ArgumentParser
 from .arg_par.argument_parser import TARGET_NAME, Setting, Target, check_target
+from .arg_par.views import ParserExitView
 
 _LOG = splatlog.get_logger(__name__)
 
@@ -68,6 +71,7 @@ class ContextVarManager(Generic[TParams, T]):
                 raise RuntimeError("can not re-enter context")
 
             self._token = self._var.set(self._value)
+
             return self._value
 
         def __exit__(self, exc_type, exc_value, traceback) -> None:
@@ -113,6 +117,7 @@ error_context = ContextVarManager(
     name="error_context",
     constructor=_ErrorContext,
     default=_ErrorContext("(unknown)", False),
+    reset_on_error=False,
 )
 
 
@@ -145,8 +150,8 @@ class Sesh:
 
     _log = splatlog.LoggerProperty()
 
-    pkg_name: str
-    _parser: ArgumentParser | None = None
+    _pkg_name: str
+    _parser: ArgumentParser
     _args: argparse.Namespace | None = None
     _init_cmds: Any
     _context: Context
@@ -160,7 +165,7 @@ class Sesh:
         prog_name: str | None = None,
         autocomplete: bool = True,
     ):
-        self.pkg_name = pkg_name
+        self._pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
         self._context = cfg.context.derived_context()
@@ -177,6 +182,14 @@ class Sesh:
             self._parser = parser
 
     @property
+    def _splatlog_self_(self) -> Any:
+        return splatlog.lib.rich.REPR_HIGHLIGHTER(f"<Sesh {self._parser.prog}>")
+
+    @property
+    def pkg_name(self) -> str:
+        return self._pkg_name
+
+    @property
     def args(self):
         if self._args is None:
             raise err.InternalError("Must `parse()` first to populate `args`")
@@ -188,8 +201,6 @@ class Sesh:
 
     @property
     def parser(self) -> ArgumentParser:
-        if self._parser is None:
-            raise err.InternalError("Must `setup()` first to populate `parser`")
         return self._parser
 
     @property
@@ -201,15 +212,21 @@ class Sesh:
         except Exception as error:
             raise err.InternalError("Failed to get target") from error
 
-    def get_setting(self, name: str, as_a: type[T]) -> T:
-        prog_key = cfg.Key(self.pkg_name, name, v_type=as_a)
+    def get_app_setting_key(self, name: str, v_type: type[T]) -> cfg.Key[T]:
+        return cfg.Key(self.pkg_name, name, v_type=v_type)
 
+    def get_lib_setting_key(self, name: str, v_type: type[T]) -> cfg.Key[T]:
+        return cfg.Key(cfg.SELF_ROOT_KEY, name, v_type=v_type)
+
+    def get_setting(self, name: str, v_type: type[T]) -> T:
         config = cfg.current()
 
-        if prog_key in config:
-            return config[prog_key]
+        app_key = self.get_app_setting_key(name, v_type)
 
-        return config[cfg.Key(cfg.SELF_ROOT_KEY, name, v_type=as_a)]
+        if app_key in config:
+            return config[app_key]
+
+        return config[self.get_lib_setting_key(name, v_type)]
 
     def is_backtracing(self) -> bool:
         return self.get_setting("backtrace", bool)
@@ -220,13 +237,13 @@ class Sesh:
                 key=cfg.Key(self.pkg_name, "backtrace"),
                 flags=("-B", "--backtrace"),
                 action="store_true",
-                help="Print backtraces on error",
+                help="Print backtrace on error.",
             ),
             Setting(
                 key=cfg.Key(self.pkg_name, "verbosity"),
                 flags=("-V", "--verbose"),
                 action="count",
-                help="Make noise.",
+                help="Make noise. Repeat for more noise.",
             ),
             Setting(
                 key=cfg.Key(self.pkg_name, "output"),
@@ -279,7 +296,8 @@ class Sesh:
         self,
         argv: Sequence[str] | None = None,
     ) -> Sesh:
-        self._args = self.parser.parse_args(argv)
+        with error_context("parsing arguments"):
+            self._args = self.parser.parse_args(argv)
 
         splatlog.set_verbosity(
             self.get_setting("verbosity", splatlog.Verbosity)
@@ -365,7 +383,19 @@ class Sesh:
                 return exit_status
 
             case err.ParserExit():
-                return self._handle_parser_exit(error)
+                view = ParserExitView(self, error)
+
+                try:
+                    view.render(self.get_setting("output", str))
+                except err.ParserExit as wtf:
+                    raise err.InternalError(
+                        "Should NEVER happen -- ParserExit raised while "
+                        "handling ParserExit"
+                    ) from wtf
+                except BaseException as render_error:
+                    return self.handle_error(render_error)
+
+                return view.return_code
 
             case SystemExit():
                 if not expect_system_exit:
@@ -411,53 +441,6 @@ class Sesh:
                     )
                 return 1
 
-    def _handle_parser_exit(self, error: err.ParserExit) -> int:
-        # NOTE  Single call site at this time (2023-02-04); factored-out into
-        #       a separate method to make caller (`run``) easier to read.
-        #
-        self._log.debug(
-            "Handling `ParserExit`...",
-            status=error.status,
-            message=error.message,
-        )
-
-        if error.status == 0:
-            if message := error.message:
-                io.OUT.print(message)
-            return error.status
-
-        is_bt = self.is_backtracing()
-
-        if is_bt:
-            self._log.exception(
-                "Failed to parse arguments",
-                status=error.status,
-                message=error.message,
-            )
-
-        message = str(error.message) if error.message else "(no message)"
-
-        io.ERR.print("Failed to parse arguments", style=Style(italic=True))
-        io.ERR.print(
-            Padding(
-                Panel(
-                    message,
-                    title="ERROR",
-                    border_style=Style(color="red"),
-                    padding=(1, 2),
-                ),
-                (1, 0),
-            )
-        )
-
-        if not is_bt:
-            io.ERR.print(
-                "Enabled backtrace logging with `--backtrace` flag",
-                style=Style(italic=True),
-            )
-
-        return error.status
-
     # F'ing doc generator can't cope with anything named 'exec' due to using
     # `lib2to3` to parse (`exec` was a keyword in Python 2):
     #
@@ -467,10 +450,16 @@ class Sesh:
         sys.exit(self.run())
 
     def takeover(self, argv: Sequence[str] | None = None) -> NoReturn:
+        sys.exit(self._context.run(self._takeover, argv))
+
+    def _takeover(self, argv: Sequence[str] | None = None) -> int:
         exit_status: int = 0
         try:
-            self.parse(argv)
+            self._parse(argv)
+
+            exit_status = self._run()
+
         except BaseException as error:
             exit_status = self.handle_error(error)
 
-        sys.exit(exit_status)
+        return exit_status

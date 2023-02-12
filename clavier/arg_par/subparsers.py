@@ -1,6 +1,6 @@
 from __future__ import annotations
 from inspect import signature
-from typing import Iterable, TYPE_CHECKING
+from typing import Iterable, TYPE_CHECKING, Sequence
 import argparse
 from pathlib import Path
 import os
@@ -15,7 +15,7 @@ from clavier import dyn
 from .arg_par_helpers import invoke_hook, DEFAULT_HOOK_NAMES
 
 if TYPE_CHECKING:
-    from .argument_parser import ArgumentParser
+    from .argument_parser import ArgumentParser, Setting
 
 
 class Subparsers(argparse._SubParsersAction):
@@ -25,10 +25,18 @@ class Subparsers(argparse._SubParsersAction):
     """
 
     hook_names: Iterable[str]
+    settings: tuple["Setting", ...]
 
-    def __init__(self, *args, hook_names=DEFAULT_HOOK_NAMES, **kwds):
+    def __init__(
+        self,
+        *args,
+        hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
+        settings: tuple["Setting", ...] = (),
+        **kwds,
+    ):
         super().__init__(*args, **kwds)
         self.hook_names = hook_names
+        self.settings = settings
 
     def add_parser(self, name, **kwds) -> "ArgumentParser":
         if "help" in kwds and "description" not in kwds:
@@ -36,6 +44,7 @@ class Subparsers(argparse._SubParsersAction):
 
         # This is really just to make the type checker cool wit it
         kwds["hook_names"] = self.hook_names
+        kwds["settings"] = self.settings
 
         return super().add_parser(name, **kwds)
 

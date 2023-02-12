@@ -31,6 +31,7 @@ from argparse import (
     HelpFormatter,
     _ArgumentGroup,
 )
+from textwrap import dedent
 from typing import Callable, Generator, Iterable, ParamSpec, TypeVar, cast
 
 from rich.syntax import Syntax
@@ -456,9 +457,10 @@ class RichHelpFormatter(HelpFormatter):
             usage = " ".join([s for s in [prog, action_usage] if s])
 
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
-        return Syntax(usage, "bash")
+        return Syntax(usage, "bash", padding=(1, 2))
 
     def _format_text(self, text: str) -> RenderableType:
+        text = dedent(text)
         if "%(prog)" in text:
             text = text % dict(prog=self._prog)
         return Markdown(text)
@@ -541,4 +543,4 @@ class RichHelpFormatter(HelpFormatter):
         return Markdown(self._get_help_string(action) % params)
 
     def _get_help_string(self, action: Action) -> str:
-        return str(action.help)
+        return dedent(str(action.help))

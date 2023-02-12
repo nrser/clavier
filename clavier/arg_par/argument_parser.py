@@ -14,7 +14,7 @@ from splatlog.lib.text import fmt, fmt_type_of
 
 from clavier import io, err, cfg
 
-from .help_error_view import HelpErrorView
+from .views import HelpErrorView
 from .rich_help_formatter import RichHelpFormatter
 
 from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
@@ -107,6 +107,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
     notes: str | None
     hook_names: Sequence[str]
+    settings: tuple[Setting, ...]
 
     def __init__(
         self,
@@ -122,6 +123,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
         self.notes = notes
         self.hook_names = hook_names
+        self.settings = tuple(settings)
         self.register("action", "parsers", Subparsers)
 
         if target is None:
@@ -144,6 +146,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def add_subparsers(self, **kwds) -> Subparsers:
         kwds["hook_names"] = self.hook_names
+        kwds["settings"] = self.settings
         # TODO  Threw the `cast` in to satisfy PyLance, not _sure_ that it's
         #       right..?
         return cast(Subparsers, super().add_subparsers(**kwds))
