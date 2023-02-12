@@ -29,14 +29,8 @@ from contextlib import contextmanager
 
 
 import splatlog
-from rich.console import Console, Group
-from rich.panel import Panel
-from rich.style import Style
-from rich.padding import Padding
-from rich.traceback import Traceback
-from rich.text import Text
+from rich.console import Console
 
-from .etc.fun import Nada, Option, Some, as_option
 from . import err, io, cfg
 from .arg_par import ArgumentParser
 from .arg_par.argument_parser import TARGET_NAME, Setting, Target, check_target
