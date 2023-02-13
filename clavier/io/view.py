@@ -68,7 +68,7 @@ class View(Generic[TData]):
     def print(self, *args, **kwds):
         self.out.print(*args, **kwds)
 
-    def render(self, format: str = DEFAULT_FORMAT):
+    def render(self, format: str = DEFAULT_FORMAT) -> None:
         method_name = f"render_{format}"
         method = getattr(self, method_name, None)
 
@@ -86,13 +86,13 @@ class View(Generic[TData]):
 
         method()
 
-    def render_json(self):
+    def render_json(self) -> None:
         """\
         Dumps the return value in JSON format.
         """
         self.print(json.dumps(self.data, indent=2))
 
-    def render_rich(self):
+    def render_rich(self) -> None:
         """\
         Pretty, colorful output for humans via the [rich][] Python package.
 

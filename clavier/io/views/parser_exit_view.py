@@ -46,27 +46,9 @@ class ParserExitView(SeshErrorView[err.ParserExit]):
         )
 
     def render_rich(self) -> None:
-        if self.error.status == 0:
+        if self.exit_status == 0:
             if message := self.error.message:
                 self.out.print(message)
             return
 
         super().render_rich()
-
-    def render_json(self):
-        sesh = self.data.sesh
-        error = self.data.error
-
-        payload = {
-            "status": error.status,
-            "message": error.message,
-        }
-
-        if (
-            error.status != 0
-            and sesh.is_backtracing()
-            and (tb := error.__traceback__)
-        ):
-            payload["traceback"] = TRACEBACK_HANDLER.handle(tb)
-
-        self.out.print(json.dumps(payload, indent=2))

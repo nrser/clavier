@@ -106,7 +106,11 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
 
     def render_json(self):
         payload = {
-            "status": self.exit_status,
+            "exit_status": self.exit_status,
+            "error": {
+                "type": txt.fmt_type_of(self.error),
+                "args": self.error.args,
+            },
             "message": self.get_error_message(),
             "context": self.data.context,
         }
