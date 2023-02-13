@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 import asyncio
-from dataclasses import dataclass, field
 from inspect import unwrap
 from typing import (
     Any,
     Callable,
-    ClassVar,
     Dict,
-    Generator,
     Generic,
     NamedTuple,
     NoReturn,
@@ -17,8 +14,6 @@ from typing import (
     Sequence,
     TypeVar,
     Union,
-    Optional,
-    cast,
 )
 from pathlib import Path
 import argparse
@@ -31,10 +26,9 @@ from contextlib import contextmanager
 import splatlog
 from rich.console import Console
 
-from . import err, io, cfg
+from . import err, io, cfg, etc, txt
 from .arg_par import ArgumentParser
 from .arg_par.argument_parser import TARGET_NAME, Setting, Target, check_target
-from .arg_par.views import ParserExitView
 
 _LOG = splatlog.get_logger(__name__)
 
@@ -228,23 +222,27 @@ class Sesh:
     def get_parser_settings(self) -> Sequence[Setting]:
         return [
             Setting(
-                key=cfg.Key(self.pkg_name, "backtrace"),
+                key=self.get_app_setting_key("backtrace", bool),
                 flags=("-B", "--backtrace"),
                 action="store_true",
                 help="Print backtrace on error.",
             ),
             Setting(
-                key=cfg.Key(self.pkg_name, "verbosity"),
+                key=self.get_app_setting_key("verbosity", int),
                 flags=("-V", "--verbose"),
                 action="count",
                 help="Make noise. Repeat for more noise.",
             ),
             Setting(
-                key=cfg.Key(self.pkg_name, "output"),
+                key=self.get_app_setting_key("output", str),
                 flags=("-O", "--output"),
                 help=io.View.help(),
             ),
         ]
+
+    def get_parser_setting(self, name: str) -> Setting | None:
+        key = self.get_app_setting_key(name, Any)
+        return etc.iter.find(lambda s: s.key == key, self.get_parser_settings())
 
     def setup(
         self,
@@ -321,20 +319,43 @@ class Sesh:
         # Resolve default getters
         _resolve_default_getters(kwds)
 
-        with error_context("running command", expect_system_exit=True):
+        with error_context(
+            f"executing {txt.fmt(target)}", expect_system_exit=True
+        ):
             if asyncio.iscoroutinefunction(unwrap(target)):
                 result = asyncio.run(target(**kwds))
             else:
                 result = target(**kwds)
 
-        with error_context("wrapping with view"):
-            if not isinstance(result, io.View):
-                result = io.View(result)
+        view = result if isinstance(result, io.View) else io.View(result)
 
-        with error_context("rendering view"):
-            result.render(self.get_setting("output", str))
+        return self._render_view(view)
 
-        return result.return_code
+    def _render_view(self, view: io.View) -> int:
+        with error_context(f"rendering view {txt.fmt_type_of(view)}"):
+            try:
+                view_format = self.get_setting("output", str)
+                view.render(view_format)
+
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                return self.exit_status_for_signal(signal.SIGINT)
+
+            except BaseException as error:
+                # Check if we were doing our own view rendering
+                if isinstance(view, io.views.SeshView):
+                    # Ok, we were. In this case we do **not** want to go back
+                    # in to `handle_error` because we might cause an infinite
+                    # loop.
+                    #
+                    # Our views are never supposed to raise, but, well, here we
+                    # are. Until we figure something better out just let it
+                    # fly on up and get nasty I guess.
+                    #
+                    raise
+
+                return self.handle_error(error)
+
+            return view.exit_status
 
     @classmethod
     def exit_status_for_signal(cls, signal_number: int) -> int:
@@ -368,28 +389,20 @@ class Sesh:
         match error:
             case asyncio.CancelledError() | KeyboardInterrupt():
                 exit_status = self.exit_status_for_signal(signal.SIGINT)
+
                 self._log.debug(
                     "Interupted while {}, exiting...",
                     context_message,
                     exit_status=exit_status,
                     exc_info=self.is_backtracing(),
                 )
+
                 return exit_status
 
             case err.ParserExit():
-                view = ParserExitView(self, error)
-
-                try:
-                    view.render(self.get_setting("output", str))
-                except err.ParserExit as wtf:
-                    raise err.InternalError(
-                        "Should NEVER happen -- ParserExit raised while "
-                        "handling ParserExit"
-                    ) from wtf
-                except BaseException as render_error:
-                    return self.handle_error(render_error)
-
-                return view.return_code
+                return self._render_view(
+                    io.views.ParserExitView(self, error, context_message)
+                )
 
             case SystemExit():
                 if not expect_system_exit:
@@ -410,30 +423,14 @@ class Sesh:
                 #
                 return error.code if isinstance(error.code, int) else 1
 
-            case err.InternalError():
-                # Internal error (in code / logic) are always printed,
-                # regardless of backtrace setting. It's a developer tool
-                # afterall, and someone needs to fix it.
-                #
-                self._log.exception("internal error when {}", context_message)
-
-                return 1
-
             case _:
-                # Catch-all
-                #
-                if self.is_backtracing():
-                    self._log.error(
-                        "Command [uhoh]FAILED[/uhoh]",
-                        exc_info=True,
+                return self._render_view(
+                    io.views.SeshErrorView(
+                        self,
+                        error,
+                        context_message,
                     )
-                else:
-                    self._log.error(
-                        "Command [uhoh]FAILED[/uhoh].\n\n"
-                        f"{type(error).__name__}: {error}\n\n"
-                        "Add `--backtrace` to print stack.",
-                    )
-                return 1
+                )
 
     # F'ing doc generator can't cope with anything named 'exec' due to using
     # `lib2to3` to parse (`exec` was a keyword in Python 2):

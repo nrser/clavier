@@ -39,6 +39,7 @@ TAlias = TypeVar("TAlias")
 #
 TNullResult = TypeVar("TNullResult")
 
+
 @overload
 def find(
     predicate: Callable[[TItem], Any],
@@ -84,63 +85,63 @@ def find(predicate, itr, not_found=None):
     return not_found
 
 
-@overload
-def find_map(
-    fn: Callable[[TItem], Union[TResult, Null]],
-    itr: Iterable[TItem],
-) -> Optional[TResult]:
-    pass
+# @overload
+# def find_map(
+#     fn: Callable[[TItem], Union[TResult, Null]],
+#     itr: Iterable[TItem],
+# ) -> Optional[TResult]:
+#     pass
 
 
-@overload
-def find_map(
-    fn: Callable[[TItem], Union[TResult, Null]],
-    itr: Iterable[TItem],
-    not_found: TNotFound,
-) -> Union[TResult, TNotFound]:
-    pass
+# @overload
+# def find_map(
+#     fn: Callable[[TItem], Union[TResult, Null]],
+#     itr: Iterable[TItem],
+#     not_found: TNotFound,
+# ) -> Union[TResult, TNotFound]:
+#     pass
 
 
-@overload
-def find_map(
-    fn: Callable[[TItem], Union[TResult, TNullResult]],
-    itr: Iterable[TItem],
-    nothing: Container[TNullResult],
-) -> Optional[TResult]:
-    pass
+# @overload
+# def find_map(
+#     fn: Callable[[TItem], Union[TResult, TNullResult]],
+#     itr: Iterable[TItem],
+#     nothing: Container[TNullResult],
+# ) -> Optional[TResult]:
+#     pass
 
 
-@overload
-def find_map(
-    fn: Callable[[TItem], Union[TResult, TNullResult]],
-    itr: Iterable[TItem],
-    not_found: TNotFound,
-    nothing: Container[TNullResult],
-) -> Union[TResult, TNotFound]:
-    pass
+# @overload
+# def find_map(
+#     fn: Callable[[TItem], Union[TResult, TNullResult]],
+#     itr: Iterable[TItem],
+#     not_found: TNotFound,
+#     nothing: Container[TNullResult],
+# ) -> Union[TResult, TNotFound]:
+#     pass
 
 
-def find_map(
-    fn,
-    itr,
-    not_found=None,
-    nothing=(None, False),
-):
-    """\
-    Like `find()`, but returns first value returned by `predicate` that is not
-    `False` or `None`.
+# def find_map(
+#     fn,
+#     itr,
+#     not_found=None,
+#     nothing=(None, False),
+# ):
+#     """\
+#     Like `find()`, but returns first value returned by `predicate` that is not
+#     `False` or `None`.
 
-    >>> find_map(
-    ...     lambda dct: dct.get('z'),
-    ...     ({'x': 1}, {'y': 2}, {'z': 3}),
-    ... )
-    3
-    """
-    for item in itr:
-        result = fn(item)
-        if result not in nothing:
-            return result
-    return not_found
+#     >>> find_map(
+#     ...     lambda dct: dct.get('z'),
+#     ...     ({'x': 1}, {'y': 2}, {'z': 3}),
+#     ... )
+#     3
+#     """
+#     for item in itr:
+#         result = fn(item)
+#         if result not in nothing:
+#             return result
+#     return not_found
 
 
 def intersperse(
@@ -158,6 +159,7 @@ def intersperse(
         yield separator
         yield item
 
+
 def interspersed(
     iterable: Iterable[TItem], separator: V
 ) -> List[Union[TItem, V]]:
@@ -170,7 +172,9 @@ def interspersed(
     """
     return list(intersperse(iterable, separator))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     from pathlib import Path
     import doctest
+
     doctest.testmod()

@@ -14,7 +14,6 @@ from splatlog.lib.text import fmt, fmt_type_of
 
 from clavier import io, err, cfg
 
-from .views import HelpErrorView
 from .rich_help_formatter import RichHelpFormatter
 
 from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
@@ -152,7 +151,7 @@ class ArgumentParser(argparse.ArgumentParser):
         return cast(Subparsers, super().add_subparsers(**kwds))
 
     def no_target(self):
-        return HelpErrorView(self)
+        return io.views.HelpErrorView(self)
 
     def env_var_name(self, name):
         return self.prog.upper() + "_" + name.upper()

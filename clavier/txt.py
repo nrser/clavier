@@ -20,6 +20,8 @@ import inspect
 from pathlib import Path
 import shlex
 
+import splatlog
+
 
 def tick(value) -> str:
     return f"`{value}`"
@@ -34,11 +36,9 @@ def fmt_class(cls) -> str:
 def fmt_path(path: Path) -> str:
     return tick(path)
 
+
 def fmt_cmd(
-    cmd: Iterable[str],
-    *,
-    code_width: int=80,
-    indent: Union[str, int]="  "
+    cmd: Iterable[str], *, code_width: int = 80, indent: Union[str, int] = "  "
 ):
     if isinstance(indent, int):
         indent = " " * indent
@@ -54,12 +54,16 @@ def fmt_cmd(
     return "\n".join(lines)
 
 
+def fmt_type_of(x: Any) -> str:
+    return splatlog.lib.fmt_type_of(x)
+
+
 def fmt(x: Any) -> str:
     if inspect.isclass(x):
         return fmt_class(x)
     if isinstance(x, Path):
         return fmt_path(x)
-    return repr(x)
+    return splatlog.lib.fmt(x)
 
 
 def coordinate(
