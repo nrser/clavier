@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from rich.console import Console, RenderableType
@@ -69,15 +70,17 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
 
         return "Show trace: " + " | ".join(opts)
 
-    def get_message(self) -> RenderableType:
+    def get_error_message(self) -> str:
         match self.error.args:
             case ():
-                msg = str(self.error)
+                return str(self.error)
             case (str(s),):
-                msg = s
+                return s
             case args:
-                msg = " ".join(str(a) for a in args)
-        return Markdown(msg)
+                return " ".join(str(a) for a in args)
+
+    def get_message(self) -> RenderableType:
+        return Markdown(self.get_error_message())
 
     def get_context(self) -> TextType | None:
         if self.data.context is None:
@@ -101,20 +104,18 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
             self.err.print(as_traceback(self.error))
             self.err.print(NEWLINE)
 
-    # def render_json(self):
-    #     sesh = self.data.sesh
-    #     error = self.data.error
+    def render_json(self):
+        payload = {
+            "status": self.exit_status,
+            "message": self.get_error_message(),
+            "context": self.data.context,
+        }
 
-    #     payload = {
-    #         "status": error.status,
-    #         "message": error.message,
-    #     }
+        if (
+            self.exit_status != 0
+            and self.is_backtracing
+            and (tb := self.error.__traceback__)
+        ):
+            payload["traceback"] = TRACEBACK_HANDLER.handle(tb)
 
-    #     if (
-    #         error.status != 0
-    #         and sesh.is_backtracing()
-    #         and (tb := error.__traceback__)
-    #     ):
-    #         payload["traceback"] = TRACEBACK_HANDLER.handle(tb)
-
-    #     self.out.print(json.dumps(payload, indent=2))
+        self.out.print(json.dumps(payload, indent=2))

@@ -351,7 +351,11 @@ class Sesh:
                     # are. Until we figure something better out just let it
                     # fly on up and get nasty I guess.
                     #
-                    raise
+                    raise err.InternalError(
+                        "failed to render internal view {}".format(
+                            view.__class__.__qualname__
+                        )
+                    ) from error
 
                 return self.handle_error(error)
 
