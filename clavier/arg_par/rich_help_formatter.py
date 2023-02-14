@@ -57,6 +57,8 @@ from rich.padding import Padding
 from rich.highlighter import RegexHighlighter
 
 from clavier import io, err, cfg, txt
+from .formatters.rich_action_formatter import RichActionFormatter
+from .formatters.rich_section_formatter import RichSectionFormatter
 
 _LOG = splatlog.get_logger(__name__)
 _CFG = cfg.get_scope(__name__)
@@ -86,156 +88,8 @@ class RichHelpFormatter(HelpFormatter):
     Adapted from `argparse.HelpFormatter`.
     """
 
-    class _Section:
-        formatter: RichHelpFormatter
-        parent: RichHelpFormatter._Section | None
-        heading: str | None
-        items: list[Callable[[], _RT | None]]
-
-        def __init__(
-            self,
-            formatter: RichHelpFormatter,
-            parent: RichHelpFormatter._Section | None = None,
-            heading: str | None = None,
-        ):
-            self.formatter = formatter
-            self.parent = parent
-            self.heading = heading
-            self.items = []
-            if parent is None:
-                self.level = 0
-            else:
-                self.level = 1 + parent.level
-
-        @property
-        def title(self) -> str | None:
-            if self.heading is not SUPPRESS and self.heading is not None:
-                return self.heading.title()
-            return None
-
-        def get_renderable_items(self) -> tuple[_RT, ...]:
-            return tuple(
-                x
-                for x in (f() for f in self.items)
-                if x is not None and x is not io.EMPTY
-            )
-
-        def format_rich(self) -> Group | None:
-            items = self.get_renderable_items()
-
-            if len(items) == 0:
-                return None
-
-            if self.parent is None:
-                return Group(*items)
-
-            if self.title is None or self.title == "":
-                return Group(*items, io.NEWLINE)
-            else:
-                return Group(
-                    *io.header(self.title),
-                    *items,
-                    io.NEWLINE,
-                )
-
-        def format_help(self):
-            # Note really sure what the story was here... guess it doesn't get
-            # called?
-            raise NotImplementedError("TODO..?!?")
-            # return self.renderable
-
-    @dataclass
-    class _ActionFormatter:
-        help_formatter: "RichHelpFormatter"
-        action: Action
-        depth: int
-
-        @cached_property
-        def invocation(self) -> _RT:
-            return self.help_formatter._format_action_invocation(self.action)
-
-        @cached_property
-        def invocation_measurement(self) -> Measurement:
-            return Measurement.get(
-                self.help_formatter._console,
-                self.help_formatter._console.options,
-                self.invocation,
-            )
-
-        def format_value(self, value: object) -> _RT:
-            if isinstance(value, str):
-                return Text(value, "help.action.str_value")
-            return Pretty(value)
-
-        @cached_property
-        def default_row(self) -> _InfoTableRow | None:
-            if (default := self.action.default) and default != SUPPRESS:
-                return _InfoTableRow(
-                    Text("default", "help.action.info.name"),
-                    self.format_value(default),
-                )
-
-        @cached_property
-        def choices_row(self) -> _InfoTableRow | None:
-            if (_choices := self.action.choices) and (
-                choices := tuple(_choices)
-            ):
-                return _InfoTableRow(
-                    Text("choices", "help.action.info.name"),
-                    Group(*(self.format_value(c) for c in choices)),
-                )
-
-        def info_table_rows(self) -> Generator[_InfoTableRow, None, None]:
-            if choices_row := self.choices_row:
-                yield choices_row
-
-            if default_row := self.default_row:
-                yield default_row
-
-        @cached_property
-        def info_table(self) -> _RT | None:
-            table = Table(padding=(0, 2, 0, 0), show_header=False, box=None)
-
-            for index, row in enumerate(self.info_table_rows()):
-                if index != 0:
-                    table.add_row(io.EMPTY, io.EMPTY)
-                table.add_row(*row)
-
-            if table.row_count > 0:
-                return Padding(table, (0, 0))
-
-        @cached_property
-        def subactions(self) -> _RT | None:
-            if hasattr(self.action, "_get_subactions"):
-                # pylint: disable=protected-access
-                return self.help_formatter._format_actions(
-                    list(self.help_formatter._iter_subactions(self.action)),
-                    _depth=self.depth + 1,
-                )
-
-        @cached_property
-        def help(self) -> _RT | None:
-            if self.action.help:
-                return self.help_formatter._expand_help(self.action)
-
-        @cached_property
-        def contents(self) -> _RT:
-            g = io.Grouper()
-
-            g.append(self.help)
-            g.append(self.info_table)
-            g.append(self.subactions)
-
-            return g.to_group()
-
-        @cached_property
-        def type(self) -> _RT:
-            if self.action.type is None:
-                return io.EMPTY
-            return Pretty(txt.fmt(self.action.type))
-
-        def to_row(self) -> tuple[_RT, _RT, _RT]:
-            return (self.invocation, self.type, self.contents)
+    _Section = RichSectionFormatter
+    _ActionFormatter = RichActionFormatter
 
     _prog: str
     _console: Console
