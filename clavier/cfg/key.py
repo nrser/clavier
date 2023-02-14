@@ -109,7 +109,7 @@ class Key(Sequence[str], Generic[T]):
     """
 
     STRING_SEPARATOR = "."
-    SEGMENT_FORMAT = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+    SEGMENT_FORMAT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
     @classmethod
     def is_segment(cls, x) -> bool:
@@ -689,3 +689,15 @@ class Key(Sequence[str], Generic[T]):
         ```
         """
         return self.__class__(key, self, v_type=self._v_type)
+
+    def select(self, predicate: Callable[[str], Any]) -> Key[T]:
+        return Key(
+            *(part for part in self._parts if predicate(part)),
+            v_type=self.v_type,
+        )
+
+    def reject(self, predicate: Callable[[str], Any]) -> Key[T]:
+        return Key(
+            *(part for part in self._parts if not predicate(part)),
+            v_type=self.v_type,
+        )

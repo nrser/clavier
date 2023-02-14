@@ -5,19 +5,19 @@ import os
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generator,
     ParamSpec,
     Concatenate,
     TypeVar,
-    cast,
     overload,
 )
 from collections.abc import Mapping, Iterator, Callable, Iterable, KeysView
 
 from splatlog.lib.typeguard import satisfies
 from splatlog.lib.text import fmt, fmt_type_of
-import yaml
-from clavier.etc.fun import Option, Nada, Some, as_option
-from clavier import etc
+from rich.repr import RichReprResult
+
+from clavier import etc, txt
 
 from .key import Key, KeyMatter
 
@@ -138,38 +138,87 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
     @overload
     def __getitem__(self, __key: Key[T], /) -> T:
-        """Get an item of type `T` by providing a typed `Key[T]`.
-
-        ```python
-        v: int = config[Key("a.b.c", v_type=int)]
-        ```
-        """
         ...
 
     @overload
     def __getitem__(self, __key: dict[KeyMatter, type[T]], /) -> T:
-        """Get an item of type `T` by providing a `dict` with a _single_
-        key/value pair (a constrain which can not be represented in the type
-        signature at this time) of `KeyMatter => type[T]`.
-
-        ```python
-        v: int = config[{"a.b.c": int}]
-        ```
-
-        """
         ...
 
     @overload
     def __getitem__(self, __key: KeyMatter, /) -> Any:
-        """Get an untyped (`typing.Any`) value using `KeyMatter`.
-
-        ```python
-        v: Any = config["a.b.c"]
-        ```
-        """
         ...
 
     def __getitem__(self, __key, /):
+        """Get an item from the config. Typed and untyped (`typing.Any`) forms
+        available.
+
+        `Config` adheres to the `collections.abc.Mapping` interface, with the
+        notable addition of _typed keys_.
+
+        You can attach a `type[T]` (for some concrete type `T`, not a
+        `typing.TypeVar`) to a `Key` via the `v_type` parameter and successful
+        queries for that key will return a value of type `T`.
+
+        ##### Examples #####
+
+        Preamble...
+
+        ```python
+        >>> from clavier import cfg
+
+        >>> isinstance(cfg.current, Config)
+        True
+
+        ```
+
+        1.  Get an item of type `T` by providing a typed `Key[T]`.
+
+            ```python
+            >>> v: int = cfg.current[Key("clavier.verbosity", v_type=int)]
+
+            ```
+
+            This will fail if the value at the key can not be coerced to the
+            provided type.
+
+            ```python
+            >>> v: int = cfg.current[Key("clavier.output", v_type=int)]
+            Traceback (most recent call last):
+                ...
+            TypeError: expected config value clavier.output to be int;
+                found str: 'rich'
+
+            ```
+
+        2.  Get an untyped (`typing.Any`) value using an untyped `Key`.
+
+            ```python
+            >>> v: Any = cfg.current[Key("clavier.verbosity")]
+
+            ```
+
+        3.  Get an item of type `T` by providing a `dict` with a _single_
+            key/value pair¹ () of `KeyMatter => type[T]`.
+
+            ```python
+            >>> v: int = cfg.current[{"clavier.verbosity": int}]
+            >>> v: int = cfg.current[{("clavier", "verbosity"): int}]
+
+            ```
+
+            ¹ Note that this constraint can not be represented in the type
+            signature at this time, but it is enforced at runtime.
+
+        4.  Get an untyped (`typing.Any`) value using `KeyMatter`.
+
+            ```python
+            >>> v: Any = cfg.current["clavier.verbosity"]
+            >>> v: Any = cfg.current["clavier", "verbosity"]
+
+            ```
+
+        """
+
         key = self._as_key_(__key)
 
         # Env vars override all
@@ -207,6 +256,32 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
             raise error
         except Exception as error:
             raise AttributeError(f"Not found: {repr(name)}") from error
+
+    # Logging / Printing
+    # ------------------------------------------------------------------------
+
+    def _ancestors_(
+        self, include_self: bool = False
+    ) -> Generator[Config, None, None]:
+        target = self if include_self else self._get_parent_()
+        while target is not None:
+            yield target
+            target = target._get_parent_()
+
+    def _description_(self) -> str:
+        return txt.fmt_type_of(self, module_names=False)
+
+    def __repr__(self) -> str:
+        return "<{}>".format(
+            " -> ".join(
+                c._description_() for c in self._ancestors_(include_self=True)
+            )
+        )
+
+    __str__ = __repr__
+
+    def __rich_repr__(self) -> RichReprResult:
+        yield "parent", self._get_parent_()
 
     # `dict` Materialization
     # ------------------------------------------------------------------------

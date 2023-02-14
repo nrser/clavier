@@ -156,7 +156,7 @@ class Sesh:
         self._pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
-        self._context = cfg.context.derived_context()
+        self._context = cfg.current.create_derived_context()
 
         if parser is None:
             self._parser = ArgumentParser.create(
@@ -207,7 +207,7 @@ class Sesh:
         return cfg.Key(cfg.SELF_ROOT_KEY, name, v_type=v_type)
 
     def get_setting(self, name: str, v_type: type[T]) -> T:
-        config = cfg.current()
+        config = cfg.current._get_parent_()
 
         app_key = self.get_app_setting_key(name, v_type)
 

@@ -1,60 +1,40 @@
 from contextvars import Context, ContextVar, copy_context, Token
-from typing import Any, Callable, TypeVar, overload
+from typing import Any, Iterable
 
 
-from .config import Config, MutableConfig
+from .config import Config
 from .container import Container
-from .key import KeyMatter
-from .changeset import Changeset
-
-T = TypeVar("T")
-TReturn = TypeVar("TReturn")
-
-GLOBAL = Container()
-
-config = ContextVar[Config]("config", default=GLOBAL)
+from .key import Key
 
 
-def current() -> Config:
-    return config.get()
+class ContextualConfig(Config):
+    def __init__(self, context_var: ContextVar[Config]):
+        self._context_var = context_var
 
+    def _get_parent_(self) -> Config:
+        return self._context_var.get()
 
-def changeset(*prefix: KeyMatter, **meta: Any) -> Changeset:
-    config = current()
+    def _own_keys_(self) -> Iterable[Key]:
+        return ()
 
-    if isinstance(config, MutableConfig):
-        return config.changeset(*prefix, **meta)
+    def _has_own_(self, key: Key) -> bool:
+        return False
 
-    raise Exception("Not mutable")
+    def _get_own_(self, key: Key) -> Any:
+        raise KeyError("Scope does not own any keys")
 
+    def _own_scopes_(self) -> set[Key]:
+        return set()
 
-@overload
-def get_as(key: KeyMatter, as_a: type[T]) -> T:
-    ...
+    def _has_own_scope_(self, scope: Key) -> bool:
+        return False
 
+    def create_derived_context(self) -> Context:
+        context = copy_context()
+        context.run(self.derive_child)
+        return context
 
-@overload
-def get_as(key: KeyMatter, as_a: type[T], default: T) -> T:
-    ...
-
-
-def get_as(key: KeyMatter, as_a: type[T], *args, **kwds) -> T:
-    return current().get_as(key, as_a, *args, **kwds)
-
-
-def derive() -> Token:
-    current = config.get()
-    derived = Container(parent=current)
-    return config.set(derived)
-
-
-def derived_context() -> Context:
-    context = copy_context()
-    context.run(derive)
-    return context
-
-
-def run_in_derived_context(fn: Callable[[], TReturn]) -> TReturn:
-    ctx = copy_context()
-    ctx.run(derive)
-    return ctx.run(fn)
+    def derive_child(self) -> Token:
+        parent = self._context_var.get()
+        child = Container(parent=parent)
+        return self._context_var.set(child)

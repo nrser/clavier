@@ -18,6 +18,8 @@
 ##############################################################################
 
 from __future__ import annotations
+from dataclasses import dataclass
+from functools import cached_property
 import re as _re
 import shutil
 from argparse import (
@@ -32,27 +34,41 @@ from argparse import (
     _ArgumentGroup,
 )
 from textwrap import dedent
-from typing import Callable, Generator, Iterable, ParamSpec, TypeVar, cast
+from typing import (
+    Callable,
+    Generator,
+    Iterable,
+    NamedTuple,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
+import splatlog
 from rich.syntax import Syntax
 from rich.text import Text
-from rich.console import Group, RenderableType
+from rich.console import Group, RenderableType as _RT, Console
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.pretty import Pretty
 from rich.columns import Columns
-import splatlog
+from rich.measure import Measurement
+from rich.layout import Layout
+from rich.padding import Padding
 
-from clavier import io, err
+from clavier import io, err, cfg, txt
 
 _LOG = splatlog.get_logger(__name__)
-
-MIN_WIDTH = 64
-ARG_INVOCATION_RATIO = 0.33
+_CFG = cfg.get_scope(__name__)
 
 
 TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
+
+
+class _InfoTableRow(NamedTuple):
+    name: _RT
+    value: _RT
 
 
 class RichHelpFormatter(HelpFormatter):
@@ -65,7 +81,7 @@ class RichHelpFormatter(HelpFormatter):
         formatter: RichHelpFormatter
         parent: RichHelpFormatter._Section | None
         heading: str | None
-        items: list[Callable[[], RenderableType | None]]
+        items: list[Callable[[], _RT | None]]
 
         def __init__(
             self,
@@ -88,7 +104,7 @@ class RichHelpFormatter(HelpFormatter):
                 return self.heading.title()
             return None
 
-        def get_renderable_items(self) -> tuple[RenderableType, ...]:
+        def get_renderable_items(self) -> tuple[_RT, ...]:
             return tuple(
                 x
                 for x in (f() for f in self.items)
@@ -119,7 +135,99 @@ class RichHelpFormatter(HelpFormatter):
             raise NotImplementedError("TODO..?!?")
             # return self.renderable
 
+    @dataclass
+    class _ActionFormatter:
+        help_formatter: "RichHelpFormatter"
+        action: Action
+
+        @cached_property
+        def invocation(self) -> _RT:
+            return self.help_formatter._format_action_invocation(self.action)
+
+        @cached_property
+        def invocation_measurement(self) -> Measurement:
+            return Measurement.get(
+                self.help_formatter._console,
+                self.help_formatter._console.options,
+                self.invocation,
+            )
+
+        def format_value(self, value: object) -> _RT:
+            if isinstance(value, str):
+                return Text(value, "help.action.str_value")
+            return Pretty(value)
+
+        @cached_property
+        def default_row(self) -> _InfoTableRow | None:
+            if (default := self.action.default) and default != SUPPRESS:
+                return _InfoTableRow(
+                    Text("default", "help.action.info.name"),
+                    self.format_value(default),
+                )
+
+        @cached_property
+        def choices_row(self) -> _InfoTableRow | None:
+            if (_choices := self.action.choices) and (
+                choices := tuple(_choices)
+            ):
+                return _InfoTableRow(
+                    Text("choices", "help.action.info.name"),
+                    Group(*(self.format_value(c) for c in choices)),
+                )
+
+        def info_table_rows(self) -> Generator[_InfoTableRow, None, None]:
+            if choices_row := self.choices_row:
+                yield choices_row
+
+            if default_row := self.default_row:
+                yield default_row
+
+        @cached_property
+        def info_table(self) -> _RT | None:
+            table = Table(padding=(0, 2, 0, 0), show_header=False, box=None)
+
+            for index, row in enumerate(self.info_table_rows()):
+                if index != 0:
+                    table.add_row(io.EMPTY, io.EMPTY)
+                table.add_row(*row)
+
+            if table.row_count > 0:
+                return Padding(table, (0, 0))
+
+        @cached_property
+        def subactions(self) -> _RT | None:
+            if hasattr(self.action, "_get_subactions"):
+                # pylint: disable=protected-access
+                return self.help_formatter._format_actions(
+                    list(self.help_formatter._iter_subactions(self.action))
+                )
+
+        @cached_property
+        def help(self) -> _RT | None:
+            if self.action.help:
+                return self.help_formatter._expand_help(self.action)
+
+        @cached_property
+        def contents(self) -> _RT:
+            g = io.Grouper()
+
+            g.append(self.help)
+            g.append(self.info_table)
+            g.append(self.subactions)
+
+            return g.to_group()
+
+        @cached_property
+        def type(self) -> _RT:
+            if self.action.type is None:
+                return io.EMPTY
+            return Pretty(txt.fmt(self.action.type))
+
+        def to_row(self) -> tuple[_RT, _RT, _RT]:
+            return (self.invocation, self.type, self.contents)
+
     _prog: str
+    _console: Console
     _root_section: _Section
     _current_section: _Section
     _width: int
@@ -132,26 +240,27 @@ class RichHelpFormatter(HelpFormatter):
 
         if width is None:
             self._width = max(
-                (shutil.get_terminal_size().columns - 2, MIN_WIDTH)
+                (
+                    shutil.get_terminal_size().columns - 2,
+                    _CFG[{"min_width": int}],
+                )
             )
         else:
             self._width = width
 
+        self._action_invocation_max_width = (
+            int(self._width * _CFG[{"invocation_ratio": float}]) - 4
+        )
+
+        self._console = io.OUT
+
     def _add_item(
         self,
-        func: Callable[TParams, RenderableType | None],
+        func: Callable[TParams, _RT | None],
         *args: TParams.args,
         **kwds: TParams.kwargs,
     ) -> None:
         self._current_section.items.append(lambda: func(*args, **kwds))
-
-    # ===============================
-    # Sizing Methods
-    # ===============================
-
-    @property
-    def _action_invocation_max_width(self) -> int:
-        return int(self._width * ARG_INVOCATION_RATIO)
 
     # ========================
     # Message building methods
@@ -197,7 +306,7 @@ class RichHelpFormatter(HelpFormatter):
     # Help-formatting methods
     # =======================
 
-    def format_rich(self) -> RenderableType | None:
+    def format_rich(self) -> _RT | None:
         return self._root_section.format_rich()
 
     def format_help(self) -> str:
@@ -208,7 +317,7 @@ class RichHelpFormatter(HelpFormatter):
         action_header = self._format_action_invocation(action)
 
         # collect the pieces of the action help
-        parts: list[RenderableType] = [action_header]
+        parts: list[_RT] = [action_header]
 
         # if there was help for the action, add lines of help text
         if action.help:
@@ -222,15 +331,15 @@ class RichHelpFormatter(HelpFormatter):
         # return a render group
         return Group(*parts)
 
-    def _format_action_invocation(self, action: Action) -> RenderableType:
+    def _format_action_invocation(self, action: Action) -> _RT:
         if not action.option_strings:
             default = self._get_default_metavar_for_positional(action)
             (metavar,) = self._metavar_formatter(action, default)(1)
-            return metavar
+            return str(metavar)
 
         else:
             # items = io.Grouper()
-            items = []
+            items: list[Text] = []
 
             # if the Optional doesn't take a value, format is:
             #    -s, --long
@@ -260,8 +369,14 @@ class RichHelpFormatter(HelpFormatter):
 
             return text
 
-    def _format_actions(self, actions: Iterable[Action]) -> RenderableType:
-        rows: list[tuple[RenderableType, ...]] = []
+    def _format_actions(self, actions: Iterable[Action]) -> _RT:
+        if _CFG.get({"use_table": bool}, True):
+            return self._format_actions_table(actions)
+
+        return self._format_actions_layout(actions)
+
+    def _format_actions_table(self, actions: Iterable[Action]) -> _RT:
+        rows: list[tuple[_RT, ...]] = []
 
         for action in actions:
             if action.help is SUPPRESS:
@@ -317,9 +432,75 @@ class RichHelpFormatter(HelpFormatter):
 
         return table
 
+    def _format_actions_layout(
+        self, actions: Iterable[Action], _depth: int = 0
+    ) -> _RT:
+
+        action_formatters = [
+            self._ActionFormatter(self, action)
+            for action in actions
+            if action.help != SUPPRESS
+        ]
+
+        if len(action_formatters) == 0:
+            return io.EMPTY
+
+        inv_max_width = self._action_invocation_max_width
+
+        grouper = io.Grouper()
+
+        inv_width = max(
+            af.invocation_measurement.maximum
+            for af in action_formatters
+            if af.invocation_measurement.maximum < inv_max_width
+        )
+
+        _LOG.debug(
+            "Rendering actions",
+            inv_max_width=inv_max_width,
+            inv_width=inv_width,
+        )
+
+        for af in action_formatters:
+            _LOG.debug(
+                "Action {} widths",
+                af.action.option_strings,
+                min=af.invocation_measurement.minimum,
+                max=af.invocation_measurement.maximum,
+                oversized=(af.invocation_measurement.maximum > inv_max_width),
+            )
+
+        table = Table(padding=(0, 1), show_header=False, box=None)
+        table.add_column(width=inv_width + 2)
+        table.add_column()
+        table.add_column()
+
+        grouper.append(table)
+
+        for index, af in enumerate(action_formatters):
+            if index != 0:
+                table.add_row(io.EMPTY, io.EMPTY, io.EMPTY)
+
+            if af.invocation_measurement.maximum > inv_max_width:
+                grouper.append(af.invocation)
+                grouper.append(io.NEWLINE)
+
+                table = Table(padding=(0, 1), show_header=False, box=None)
+                table.add_column(width=inv_width + 2)
+                table.add_column()
+                table.add_column()
+                table.add_row(io.EMPTY, af.type, af.contents)
+
+                grouper.append(table)
+
+            else:
+                table.add_row(af.invocation, af.type, af.contents)
+
+        return Padding(grouper.to_group(), pad=(0, 1))
+
     def _format_actions_usage(
         self, actions: list[Action], groups: Iterable[_ArgumentGroup]
-    ) -> RenderableType:
+    ) -> _RT:
         # find group indices and identify actions in groups
         group_actions = set()
         inserts = {}
@@ -428,7 +609,7 @@ class RichHelpFormatter(HelpFormatter):
         usage: str | None,
         actions: Iterable[Action],
         groups: Iterable[_ArgumentGroup],
-    ) -> RenderableType:
+    ) -> _RT:
         # if usage is specified, use that
         if usage is not None:
             usage = usage % dict(prog=self._prog)
@@ -459,7 +640,7 @@ class RichHelpFormatter(HelpFormatter):
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
         return Syntax(usage, "bash", padding=(1, 2))
 
-    def _format_text(self, text: str) -> RenderableType:
+    def _format_text(self, text: str) -> _RT:
         text = dedent(text)
         if "%(prog)" in text:
             text = text % dict(prog=self._prog)
@@ -479,28 +660,26 @@ class RichHelpFormatter(HelpFormatter):
         else:
             yield from get_subactions()
 
-    # TODO  Looks identical to super-method? Maybe indended to override with
-    #       custom implementation but never got to it?
-    # def _metavar_formatter(
-    #     self, action: Action, default_metavar: str
-    # ) -> Callable[[int], tuple[str, ...]]:
-    #     if action.metavar is not None:
-    #         result = action.metavar
-    #     elif action.choices is not None:
-    #         choice_strs = [str(choice) for choice in action.choices]
-    #         result = "{%s}" % ",".join(choice_strs)
-    #     else:
-    #         result = default_metavar
+    def _metavar_formatter(
+        self, action: Action, default_metavar: str | None
+    ) -> Callable[[int], tuple[str | None, ...]]:
+        if action.metavar is not None:
+            result = action.metavar
+        # elif action.choices is not None:
+        #     choice_strs = [str(choice) for choice in action.choices]
+        #     result = '{%s}' % ','.join(choice_strs)
+        else:
+            result = default_metavar
 
-    #     def formater(tuple_size: int) -> tuple[str, ...]:
-    #         if isinstance(result, tuple):
-    #             return result
-    #         else:
-    #             return (result,) * tuple_size
+        def format(tuple_size: int) -> tuple[str | None, ...]:
+            if isinstance(result, tuple):
+                return result
+            else:
+                return (result,) * tuple_size
 
-    #     return formater
+        return format
 
-    # def _format_args(self, action: Action, default_metavar) -> str:
+    # def _format_args(self, action: Action, default_metavar: str | None) -> str:
     #     get_metavar = self._metavar_formatter(action, default_metavar)
     #     if action.nargs is None:
     #         return "%s" % get_metavar(1)
@@ -536,7 +715,7 @@ class RichHelpFormatter(HelpFormatter):
                 del params[name]
         for name in list(params):
             if hasattr(params[name], "__name__"):
-                params[name] = params[name].__name__
+                params[name] = params[name].__name__x
         if params.get("choices") is not None:
             choices_str = ", ".join([str(c) for c in params["choices"]])
             params["choices"] = choices_str

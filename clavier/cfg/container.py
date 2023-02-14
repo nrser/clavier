@@ -1,13 +1,15 @@
 from __future__ import annotations
-from collections import namedtuple
 from dataclasses import dataclass
 from typing import (
     Any,
+    Mapping,
     MutableMapping,
     ParamSpec,
     TypeVar,
 )
 from collections.abc import Iterable
+from types import MappingProxyType
+
 from rich.repr import RichReprResult
 
 from sortedcontainers import SortedDict
@@ -20,6 +22,8 @@ TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
 T = TypeVar("T")
 
+EMPTY_META: Mapping[str, Any] = MappingProxyType({})
+
 
 @dataclass(frozen=True)
 class Update:
@@ -28,12 +32,14 @@ class Update:
 
 
 class Container(MutableConfig):
+    _meta: Mapping[str, Any]
     _parent: Config | None
     _updates: list[Update]
     _view: MutableMapping[Key, Any]
 
-    def __init__(self, parent: Config | None = None):
+    def __init__(self, parent: Config | None = None, **meta):
         self._parent = parent
+        self._meta = meta
         self._updates = []
         self._view = SortedDict()
 
@@ -48,6 +54,17 @@ class Container(MutableConfig):
 
     def _get_own_(self, key: Key) -> Any:
         return self._view[key]
+
+    def _description_(self) -> str:
+        if meta := self._meta:
+            return "{}({})".format(
+                super()._description_(),
+                ", ".join(f"{k}={v}" for k, v in meta.items()),
+            )
+
+        if name := self._name:
+            return "{}{}".format(super()._description_(), name)
+        return super()._description_()
 
     def changeset(self, *prefix: KeyMatter, **meta: Any) -> Changeset:
         return Changeset(self, prefix, meta)

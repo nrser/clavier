@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING, TypeVar, Union
+from typing import Any, TYPE_CHECKING, TypeVar
 from collections.abc import Iterable
 
 from rich.repr import RichReprResult
 
 from .key import Key, KeyMatter
-from .config import Config, MutableConfig
+from .config import Config
 
 if TYPE_CHECKING:
     from .changeset import Changeset
@@ -20,10 +20,16 @@ class Scope(Config):
     _key: Key
 
     def __init__(self, parent: Config, key: Key):
+        # Need to use this 'cause `__setattr__` is defined in `MutableConfig`
+        # and it will error / loop out otherwise..!
         object.__setattr__(self, "_parent", parent)
         object.__setattr__(self, "_key", key)
 
-    def _get_parent_(self) -> Config | None:
+    @property
+    def key(self) -> Key:
+        return self._key
+
+    def _get_parent_(self) -> Config:
         return self._parent
 
     def _own_keys_(self) -> Iterable[Key]:
@@ -33,7 +39,7 @@ class Scope(Config):
         return False
 
     def _get_own_(self, key: Key) -> Any:
-        raise KeyError("ReadScope does not own any keys")
+        raise KeyError("Scope does not own any keys")
 
     def _own_scopes_(self) -> set[Key]:
         return set()
@@ -44,27 +50,26 @@ class Scope(Config):
     def _as_key_(self, key_matter: KeyMatter) -> Key:
         return Key(self._key, key_matter)
 
+    def _description_(self) -> str:
+        return "{}[{}]".format(
+            self.__class__.__qualname__,
+            self._key,
+        )
+
+    def __getattr__(self, name: str):
+        return super().__getattr__(name)
+
+    def __rich_repr__(self) -> RichReprResult:
+        yield "key", self._key
+        yield "parent", self._parent
+
     def to_dict(self) -> dict[str, Any]:
-        from .config import Config
-
-        if not isinstance(self._base, Config):
-            raise TypeError(
-                "`to_dict` only works when base is a Config (it's a {})".format(
-                    type(self._base)
-                )
-            )
-
         prefix = str(self._key) + Key.STRING_SEPARATOR
         dct = {}
-        for key, value in self._base.to_dict().items():
+        for key, value in self._get_parent_().to_dict().items():
             if key.startswith(prefix):
                 dct[key.removeprefix(prefix)] = value
         return dct
-
-    def __rich_repr__(self) -> RichReprResult:
-        # yield "base", self._base
-        # NOTE  Can't just yield a Key, 'cause it's a tuple?
-        yield str(self._key)
 
 
 TMutableScope = TypeVar("TMutableScope", bound="MutableScope")

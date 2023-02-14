@@ -171,10 +171,3 @@ def interspersed(
     [1, 'and', 2, 'and', 3]
     """
     return list(intersperse(iterable, separator))
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-    import doctest
-
-    doctest.testmod()

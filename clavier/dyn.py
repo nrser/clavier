@@ -53,9 +53,7 @@ def children_modules(
             yield get_child_module(module_info.name, parent__name__)
 
         except Exception:
-            config = cfg.current()
-
-            if config[children_modules, "on_error"] != "warn":
+            if cfg.current[children_modules, "on_error"] != "warn":
                 raise
 
             log_args = (
@@ -67,7 +65,7 @@ def children_modules(
                 module_info.name,
             )
 
-            if config.get(_BACKTRACE_KEY, False):
+            if cfg.current.get(_BACKTRACE_KEY, False):
                 _LOG.exception(*log_args)
             else:
                 _LOG.warning(*log_args)

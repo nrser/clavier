@@ -133,7 +133,7 @@ def code(code, lexer_name, code_width: int | None = 80, **opts):
 
 def rel(path: Path, to: Path | None = None) -> Path:
     if to is None:
-        to = cfg.current()[{(rel, "to"): Path}]
+        to = cfg.current[{(rel, "to"): Path}]
     return path.relative_to(to)
 
 
@@ -173,9 +173,9 @@ def capture(*args, **kwds) -> str:
     return capture.get()
 
 
-class Grouper(UserList):
+class Grouper(UserList[RenderableType | None]):
     def to_group(self):
-        return Group(*self.data)
+        return Group(*(e for e in self.data if e is not None))
 
     def join(self, separator):
         return self.__class__(etc.interspersed(self.data, separator))

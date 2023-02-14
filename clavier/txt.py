@@ -54,8 +54,7 @@ def fmt_cmd(
     return "\n".join(lines)
 
 
-def fmt_type_of(x: Any) -> str:
-    return splatlog.lib.fmt_type_of(x)
+fmt_type_of = splatlog.lib.fmt_type_of
 
 
 def fmt(x: Any) -> str:
