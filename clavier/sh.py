@@ -1,4 +1,4 @@
-from typing import *
+from __future__ import annotations
 import os
 from os.path import isabs, basename
 import subprocess
@@ -7,60 +7,106 @@ import json
 from shutil import rmtree
 import shlex
 from functools import wraps
+from typing import (
+    Any,
+    Generator,
+    Generic,
+    Iterable,
+    Literal,
+    Mapping,
+    NoReturn,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    cast,
+)
 
 import splatlog
 
-from .cfg import CFG
+from . import cfg
 from .io import OUT, ERR, fmt, fmt_cmd
 from .etc.ins import accepts_kwd
 
 
-CONFIG = CFG.clavier.sh
+_CFG = cfg.get_scope(__name__)
 
 Opts = Mapping[Any, Any]
-TOptsStyle = Literal["=", " ", ""]
-TOptsLongPrefix = Literal["--", "-"]
-_TPath = Union[Path, str]
+OptsStyle = Literal["=", " ", ""]
+OptsLongPrefix = Literal["--", "-"]
+_Path = Path | str
 
+T = TypeVar("T")
+V = TypeVar("V")
 TOpts = TypeVar("TOpts", bound=dict[str, Any])
+TOpts_contra = TypeVar("TOpts_contra", bound=dict[str, Any], contravariant=True)
 TReturn = TypeVar("TReturn")
+TReturn_co = TypeVar("TReturn_co", covariant=True)
 TParams = ParamSpec("TParams")
 
 
-class InnerCommandFunction(Protocol[TOpts, TReturn]):
+class _ConfigValue(Generic[T]):
+    key: cfg.Key[T]
+
+    def __init__(self, *key_parts: cfg.KeyMatter, v_type: type[T]):
+        self.key = cfg.Key(*key_parts, v_type=v_type)
+
+    def get(self) -> T:
+        return cfg.get(self.key)
+
+    def resolve(self, value) -> T:
+        if value is self:
+            return self.get()
+        return cast(T, value)
+
+
+CfgKwd = T | _ConfigValue[T]
+
+OPTS_LONG_PREFIX_DEFAULT = _ConfigValue[OptsLongPrefix](
+    __name__, "opts.long_prefix", v_type=OptsLongPrefix
+)
+
+OPTS_SORT_DEFAULT = _ConfigValue[bool](__name__, "opts.sort", v_type=bool)
+
+OPTS_STYLE_DEFAULT = _ConfigValue[OptsStyle](
+    __name__, "opts.style", v_type=OptsStyle
+)
+
+REL_PATHS_DEFAULT = _ConfigValue[bool](__name__, "rel_paths", v_type=bool)
+
+
+class InnerCommandFunction(Protocol[TOpts_contra, TReturn_co]):
     def __call__(
         self,
-        cmd: str,
-        cwd: Optional[Path] = None,
-        **opts: TOpts,
-    ) -> TReturn:
+        cmd: list[bytes | str],
+        cwd: Path | None = None,
+        **opts: TOpts_contra,
+    ) -> TReturn_co:
         ...
 
 
 # Using a "callback protocol"
 # https://stackoverflow.com/a/60667051
-class CommandFunction(Protocol[TOpts, TReturn]):
+class CommandFunction(Protocol[TOpts_contra, TReturn_co]):
     def __call__(
         self,
         *args: object,
-        cwd: Union[None, str, Path] = None,
-        opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
-        opts_sort: bool = CONFIG.opts.sort,
-        opts_style: TOptsStyle = CONFIG.opts.style,
-        rel_paths: bool = CONFIG.rel_paths,
-        **opts: TOpts,
-    ) -> TReturn:
+        cwd: _Path | None = None,
+        opts_long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
+        opts_sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
+        opts_style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
+        rel_paths: CfgKwd[bool] = REL_PATHS_DEFAULT,
+        **opts: TOpts_contra,
+    ) -> TReturn_co:
         ...
 
 
 _LOG = splatlog.get_logger(__name__)
-DEFAULT_OPTS_STYLE: TOptsStyle = "="
-DEFAULT_OPTS_SORT = True
+
 
 CompletedProcess = subprocess.CompletedProcess
 
 
-def render_path(path: Path, rel_to: Optional[Path]) -> str:
+def render_path(path: Path, rel_to: Path | None) -> str:
     if rel_to is None:
         return str(path)
     return str(path.relative_to(rel_to))
@@ -69,9 +115,9 @@ def render_path(path: Path, rel_to: Optional[Path]) -> str:
 def _iter_opt(
     flag: str,
     value: Any,
-    style: TOptsStyle,
+    style: OptsStyle,
     is_short: bool,
-    rel_to: Optional[Path] = None,
+    rel_to: Path | None = None,
 ) -> Generator[str, None, None]:
     """Private helper for `iter_opts`."""
 
@@ -120,10 +166,10 @@ def _iter_opt(
 def render_opts(
     opts: Opts,
     *,
-    long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
-    sort: bool = CONFIG.opts.sort,
-    style: TOptsStyle = CONFIG.opts.style,
-    rel_to: Optional[Path] = None,
+    long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
+    sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
+    style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
+    rel_to: Path | None = None,
 ) -> Generator[str, None, None]:
     """
     Render a mapping of option names to values to a (yielded) sequence of
@@ -197,24 +243,28 @@ def render_opts(
     if opts is None:
         return
 
+    _style = OPTS_STYLE_DEFAULT.resolve(style)
+    _long_prefix = OPTS_LONG_PREFIX_DEFAULT.resolve(long_prefix)
+    _sort = OPTS_SORT_DEFAULT.resolve(sort)
+
     # Sort key/value pairs if needed
-    items = sorted(opts.items()) if sort else list(opts.items())
+    items = sorted(opts.items()) if _sort else list(opts.items())
 
     for name, value in items:
         name_s = str(name)
         is_short = len(name_s) == 1
-        flag = f"-{name_s}" if is_short else f"{long_prefix}{name_s}"
-        yield from _iter_opt(flag, value, style, is_short, rel_to)
+        flag = f"-{name_s}" if is_short else f"{_long_prefix}{name_s}"
+        yield from _iter_opt(flag, value, _style, is_short, rel_to)
 
 
 def render_args(
     args: Iterable[object],
     *,
-    opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
-    opts_sort: bool = CONFIG.opts.sort,
-    opts_style: TOptsStyle = CONFIG.opts.style,
-    rel_to: Optional[Path] = None,
-) -> Generator[Union[str, bytes], None, None]:
+    opts_long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
+    opts_sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
+    opts_style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
+    rel_to: Path | None = None,
+) -> Generator[str | bytes, None, None]:
     """
     Render `args` to sequence of `str` (and/or `bytes`, if any values passed in
     are `bytes`).
@@ -255,10 +305,12 @@ def render_args(
 
 def prepare(
     *args: object,
-    cwd: Optional[_TPath] = None,
-    rel_paths: bool = CONFIG.rel_paths,
-    **opts,
-) -> list[str]:
+    cwd: _Path | None = None,
+    rel_paths: CfgKwd[bool] = REL_PATHS_DEFAULT,
+    opts_long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
+    opts_sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
+    opts_style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
+) -> list[str | bytes]:
     """
     Prepare `args` to be passed `subprocess.run` or similar functions.
 
@@ -280,14 +332,24 @@ def prepare(
     ['kubectl', '--namespace=blah', 'logs', '--follow', 'some-pod']
 
     """
+    _rel_paths = REL_PATHS_DEFAULT.resolve(rel_paths)
+
     # Normalize str cwd path to Path
     if isinstance(cwd, str):
         cwd = Path(cwd)
-    if rel_paths is True:
+    if _rel_paths is True:
         rel_to = Path.cwd() if cwd is None else cwd
     else:
         rel_to = None
-    return list(render_args(args, rel_to=rel_to, **opts))
+    return list(
+        render_args(
+            args,
+            rel_to=rel_to,
+            opts_long_prefix=opts_long_prefix,
+            opts_sort=opts_sort,
+            opts_style=opts_style,
+        )
+    )
 
 
 def command_function(
@@ -303,12 +365,12 @@ def command_function(
 
     @wraps(fn)
     def wrapper(
-        *args: Iterable[object],
-        cwd: Optional[_TPath] = None,
-        opts_long_prefix: TOptsLongPrefix = CONFIG.opts.long_prefix,
-        opts_sort: bool = CONFIG.opts.sort,
-        opts_style: TOptsStyle = CONFIG.opts.style,
-        rel_paths: bool = CONFIG.rel_paths,
+        *args: object,
+        cwd: _Path | None = None,
+        opts_long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
+        opts_sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
+        opts_style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
+        rel_paths: CfgKwd[bool] = REL_PATHS_DEFAULT,
         **opts,
     ):
         # Normalize str cwd path to Path
@@ -318,7 +380,7 @@ def command_function(
         # If the wrapped function accepts an `encoding` keyword and there
         # isn't one in `opts` then default it from the `CONFIG`
         if accepts_encoding and "encoding" not in opts:
-            opts["encoding"] = CONFIG.encoding
+            opts["encoding"] = _CFG[{"encoding": str}]
 
         cmd = prepare(
             *args,
@@ -343,27 +405,26 @@ def join(*args, **opts) -> str:
 
     Same as `prepare`.
     """
-    return shlex.join(prepare(*args, **opts))
+    return shlex.join((str(arg) for arg in prepare(*args, **opts)))
 
 
-# pylint: disable=redefined-builtin
-@_LOG.inject
 @command_function
 def get(
-    cmd: str,
-    log: splatlog.SplatLogger = _LOG,
-    format: Optional[str] = None,
+    cmd: list[bytes | str],
+    cwd: Path | None = None,
+    format: str | None = None,
     **opts,
 ) -> Any:
-    log.debug(
+    _LOG.debug(
         "Getting system command output...",
         cmd=fmt_cmd(cmd),
+        cwd=cwd,
         format=format,
         **opts,
     )
 
     # https://docs.python.org/3.8/library/subprocess.html#subprocess.check_output
-    output = subprocess.check_output(cmd, **opts)
+    output = subprocess.check_output(cmd, cwd=cwd, **opts)
 
     if format is None:
         return output
@@ -372,22 +433,21 @@ def get(
     elif format == "json":
         return json.loads(output)
     else:
-        log.warn(
+        _LOG.warning(
             "Unknown `format`", format=format, expected=[None, "strip", "json"]
         )
         return output
 
 
-@_LOG.inject
 @command_function
 def run(
-    cmd: str,
-    log: splatlog.SplatLogger = _LOG,
+    cmd: list[bytes | str],
+    cwd: Path | None = None,
     check: bool = True,
-    input: Union[None, str, bytes, Path] = None,
+    input: str | bytes | Path | None = None,
     **opts,
 ) -> CompletedProcess:
-    log.info(
+    _LOG.info(
         "Running system command...",
         cmd=fmt_cmd(cmd),
         **opts,
@@ -403,10 +463,9 @@ def run(
                 **opts,
             )
     else:
-        return subprocess.run(cmd, check=check, input=input, **opts)
+        return subprocess.run(cmd, cwd=cwd, check=check, input=input, **opts)
 
 
-@_LOG.inject
 def test(*args, **kwds) -> bool:
     """
     Run a command and return whether or not it succeeds (has
@@ -421,26 +480,33 @@ def test(*args, **kwds) -> bool:
     return run(*args, check=False, **kwds).returncode == 0
 
 
-@_LOG.inject
 @command_function
 def replace(
-    cmd: list[str],
-    cwd: Optional[Path],
-    env: Optional[Mapping] = None,
-    log: splatlog.SplatLogger = _LOG,
+    cmd: list[bytes | str],
+    cwd: Path | None = None,
+    env: Mapping | None = None,
+    **opts,  # Unused
 ) -> NoReturn:
     # https://docs.python.org/3.9/library/os.html#os.execl
     for console in (OUT, ERR):
         console.file.flush()
-    proc_name = basename(cmd[0])
-    log.debug(
+
+    if len(cmd) == 0:
+        raise ValueError("`cmd` can not be empty; ")
+
+    # TODO  Arg must be string, this is prob not the right thing to do...
+    proc_name = basename(str(cmd[0]))
+
+    _LOG.debug(
         "Replacing current process with system command...",
         cmd=fmt_cmd(cmd),
         env=env,
         cwd=cwd,
     )
+
     if cwd is not None:
         os.chdir(cwd)
+
     if env is None:
         if isabs(cmd[0]):
             os.execv(cmd[0], cmd)
@@ -453,31 +519,29 @@ def replace(
             os.execvpe(proc_name, cmd, env)
 
 
-@_LOG.inject
-def file_absent(path: Path, name: Optional[str] = None, log=_LOG):
+def file_absent(path: Path, name: str | None = None):
     if name is None:
         name = fmt(path)
     if path.exists():
-        log.info(f"[holup]Removing {name}...[/holup]", path=path)
+        _LOG.info(f"[holup]Removing {name}...[/holup]", path=path)
         if path.is_dir():
             rmtree(path)
         else:
             os.remove(path)
     else:
-        log.info(f"[yeah]{name} already absent.[/yeah]", path=path)
+        _LOG.info(f"[yeah]{name} already absent.[/yeah]", path=path)
 
 
-@_LOG.inject
-def dir_present(path: Path, desc: Optional[str] = None, log=_LOG):
+def dir_present(path: Path, desc: str | None = None):
     if desc is None:
         desc = fmt(path)
     if path.exists():
         if path.is_dir():
-            log.debug(
+            _LOG.debug(
                 f"[yeah]{desc} directory already exists.[/yeah]", path=path
             )
         else:
             raise RuntimeError(f"{path} exists and is NOT a directory")
     else:
-        log.info(f"[holup]Creating {desc} directory...[/holup]", path=path)
+        _LOG.info(f"[holup]Creating {desc} directory...[/holup]", path=path)
         os.makedirs(path)
