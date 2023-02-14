@@ -1,11 +1,10 @@
 from __future__ import annotations
 from contextvars import ContextVar
-from typing import Any, Iterable, Literal, TypeVar, cast, overload
+from typing import Any, Literal, TypeVar, cast, overload
 
 from typeguard import check_type
-import splatlog
 
-from clavier import txt, etc
+from clavier import etc
 
 from .config import Config, MutableConfig
 from .key import Key, KeyMatter
@@ -24,7 +23,6 @@ _T6 = TypeVar("_T6")
 _T7 = TypeVar("_T7")
 _T8 = TypeVar("_T8")
 
-_LOG = splatlog.get_logger(__name__)
 SELF_ROOT_KEY = Key(__package__).root
 
 # Globals

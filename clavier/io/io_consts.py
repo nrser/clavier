@@ -25,6 +25,8 @@ THEME = Theme(
         "help.action.info.name": _S(color="white", italic=True, dim=True),
         "help.action.str_value": _S(color="green"),
         "help.action.metavar": _S(color="yellow"),
+        "help.invocation.flag": _S(color="yellow", bold=True),
+        "help.invocation.metavar": _S(color="cyan", bold=True),
     }
 )
 

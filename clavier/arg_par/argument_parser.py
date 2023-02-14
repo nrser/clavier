@@ -6,13 +6,13 @@ import argparse
 from pathlib import Path
 import os
 from gettext import gettext as _
-from clavier.arg_par.actions import StoreSetting
+from clavier.arg_par.actions import ClavierAction, StoreSetting
 
 from rich.console import Console
 import splatlog
 from splatlog.lib.text import fmt, fmt_type_of
 
-from clavier import io, err, cfg
+from clavier import io, err, cfg, txt
 
 from .rich_help_formatter import RichHelpFormatter
 
@@ -44,6 +44,7 @@ class Setting:
     key: cfg.Key
     flags: tuple[str, ...]
     action: type[argparse.Action] | str | None = None
+    propagate: bool = False
     help: str | None = None
 
 
@@ -112,7 +113,7 @@ class ArgumentParser(argparse.ArgumentParser):
         self,
         *args,
         target=None,
-        view: type[io.View] = io.View,
+        view: type[io.View] = io.View,  # TODO What was this for?
         notes: str | None = None,
         hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
         settings: Iterable[Setting] = (),
@@ -131,24 +132,52 @@ class ArgumentParser(argparse.ArgumentParser):
             self.set_target(target)
 
         for setting in settings:
-            wrapped_action = self._registry_get(
-                "action", setting.action, setting.action
+            self.add_setting(setting)
+
+    def add_setting(self, setting: Setting) -> StoreSetting:
+        wrapped_action = self._registry_get(
+            "action", setting.action, setting.action
+        )
+
+        action = self.add_argument(
+            *setting.flags,
+            action=StoreSetting,
+            key=setting.key,
+            wrapped_action=wrapped_action,
+            propagate=setting.propagate,
+            help=setting.help,
+        )
+
+        if not isinstance(action, StoreSetting):
+            raise err.ReturnTypeError(
+                function=self.add_argument,
+                expected_type=StoreSetting,
+                return_value=action,
+                when="called with `action={return_type}`",
             )
 
-            self.add_argument(
-                *setting.flags,
-                action=StoreSetting,
-                key=setting.key,
-                wrapped_action=wrapped_action,
-                help=setting.help,
-            )
+        return action
 
     def add_subparsers(self, **kwds) -> Subparsers:
         kwds["hook_names"] = self.hook_names
-        kwds["settings"] = self.settings
-        # TODO  Threw the `cast` in to satisfy PyLance, not _sure_ that it's
-        #       right..?
-        return cast(Subparsers, super().add_subparsers(**kwds))
+
+        kwds["propagated_actions"] = [
+            a
+            for a in self._actions
+            if isinstance(a, ClavierAction) and a.propagate
+        ]
+
+        subparsers = super().add_subparsers(**kwds)
+
+        if not isinstance(subparsers, Subparsers):
+            raise err.ReturnTypeError(
+                function=self.add_argument,
+                expected_type=StoreSetting,
+                return_value=subparsers,
+                when="called with `action={expected_type}`",
+            )
+
+        return subparsers
 
     def no_target(self):
         return io.views.HelpErrorView(self)

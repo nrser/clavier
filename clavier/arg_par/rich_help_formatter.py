@@ -53,8 +53,8 @@ from rich.table import Table
 from rich.pretty import Pretty
 from rich.columns import Columns
 from rich.measure import Measurement
-from rich.layout import Layout
 from rich.padding import Padding
+from rich.highlighter import RegexHighlighter
 
 from clavier import io, err, cfg, txt
 
@@ -69,6 +69,15 @@ TReturn = TypeVar("TReturn")
 class _InfoTableRow(NamedTuple):
     name: _RT
     value: _RT
+
+
+class InvocationHighLighter(RegexHighlighter):
+    base_style = "help.invocation."
+
+    highlights = [
+        r"(?P<flag>--[^\s=]+)(?:[\s=](?P<metavar>\w+))?",
+        r"(?P<flag>-\w)(?:\s(?P<metavar>\w+))?",
+    ]
 
 
 class RichHelpFormatter(HelpFormatter):
@@ -139,6 +148,7 @@ class RichHelpFormatter(HelpFormatter):
     class _ActionFormatter:
         help_formatter: "RichHelpFormatter"
         action: Action
+        depth: int
 
         @cached_property
         def invocation(self) -> _RT:
@@ -199,7 +209,8 @@ class RichHelpFormatter(HelpFormatter):
             if hasattr(self.action, "_get_subactions"):
                 # pylint: disable=protected-access
                 return self.help_formatter._format_actions(
-                    list(self.help_formatter._iter_subactions(self.action))
+                    list(self.help_formatter._iter_subactions(self.action)),
+                    _depth=self.depth + 1,
                 )
 
         @cached_property
@@ -367,77 +378,16 @@ class RichHelpFormatter(HelpFormatter):
             else:
                 text = Text(", ").join(items)
 
+            InvocationHighLighter().highlight(text)
+
             return text
 
-    def _format_actions(self, actions: Iterable[Action]) -> _RT:
-        if _CFG.get({"use_table": bool}, True):
-            return self._format_actions_table(actions)
-
-        return self._format_actions_layout(actions)
-
-    def _format_actions_table(self, actions: Iterable[Action]) -> _RT:
-        rows: list[tuple[_RT, ...]] = []
-
-        for action in actions:
-            if action.help is SUPPRESS:
-                continue
-
-            invocation = self._format_action_invocation(action)
-            contents = io.Grouper()
-
-            # if there was help for the action, add lines of help text
-            if action.help:
-                contents.append(self._expand_help(action))
-
-            # If the action has a default then add that (this handles arg
-            # defaults)
-            if action.default is not None and action.default != SUPPRESS:
-                contents.append(
-                    Columns(
-                        [
-                            Text("default", style="dim white italic"),
-                            Pretty(action.default),
-                        ]
-                    )
-                )
-
-            # if there are any sub-actions, add their help as well
-            if hasattr(action, "_get_subactions"):
-                # pylint: disable=protected-access
-                contents.append(
-                    self._format_actions(list(self._iter_subactions(action)))
-                )
-
-            rows.append(
-                (
-                    "",
-                    invocation,
-                    ""
-                    if action.type is None
-                    else splatlog.lib.fmt(action.type),
-                    contents.to_group(),
-                )
-            )
-
-        if len(rows) == 0:
-            return io.EMPTY
-
-        table = Table(padding=(0, 2, 1, 0), show_header=False, box=None)
-        table.add_column(width=0)
-        table.add_column(max_width=self._action_invocation_max_width)
-        table.add_column()
-        table.add_column()
-        for row in rows:
-            table.add_row(*row)
-
-        return table
-
-    def _format_actions_layout(
+    def _format_actions(
         self, actions: Iterable[Action], _depth: int = 0
     ) -> _RT:
 
         action_formatters = [
-            self._ActionFormatter(self, action)
+            self._ActionFormatter(self, action, _depth)
             for action in actions
             if action.help != SUPPRESS
         ]
@@ -455,20 +405,20 @@ class RichHelpFormatter(HelpFormatter):
             if af.invocation_measurement.maximum < inv_max_width
         )
 
-        _LOG.debug(
-            "Rendering actions",
-            inv_max_width=inv_max_width,
-            inv_width=inv_width,
-        )
+        # _LOG.debug(
+        #     "Rendering actions",
+        #     inv_max_width=inv_max_width,
+        #     inv_width=inv_width,
+        # )
 
-        for af in action_formatters:
-            _LOG.debug(
-                "Action {} widths",
-                af.action.option_strings,
-                min=af.invocation_measurement.minimum,
-                max=af.invocation_measurement.maximum,
-                oversized=(af.invocation_measurement.maximum > inv_max_width),
-            )
+        # for af in action_formatters:
+        #     _LOG.debug(
+        #         "Action {} widths",
+        #         af.action.option_strings,
+        #         min=af.invocation_measurement.minimum,
+        #         max=af.invocation_measurement.maximum,
+        #         oversized=(af.invocation_measurement.maximum > inv_max_width),
+        #     )
 
         table = Table(padding=(0, 1), show_header=False, box=None)
         table.add_column(width=inv_width + 2)
@@ -715,7 +665,7 @@ class RichHelpFormatter(HelpFormatter):
                 del params[name]
         for name in list(params):
             if hasattr(params[name], "__name__"):
-                params[name] = params[name].__name__x
+                params[name] = params[name].__name__
         if params.get("choices") is not None:
             choices_str = ", ".join([str(c) for c in params["choices"]])
             params["choices"] = choices_str

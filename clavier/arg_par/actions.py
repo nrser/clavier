@@ -9,7 +9,18 @@ if TYPE_CHECKING:
     from .argument_parser import ArgumentParser
 
 
-class StoreSetting(Action):
+class ClavierAction(Action):
+    _propagate: bool
+
+    def __init__(self, *args, propagate: bool = False, **kwds):
+        super().__init__(*args, **kwds)
+        self._propagate = propagate
+
+    def propagate(self) -> bool:
+        return self._propagate
+
+
+class StoreSetting(ClavierAction):
     _log = splatlog.LoggerProperty()
 
     _key: cfg.Key
@@ -22,6 +33,7 @@ class StoreSetting(Action):
         dest: str,
         key: cfg.Key,
         wrapped_action: type[Action],
+        propagate: bool = False,
         **kwds
     ):
         self._key = key
@@ -52,6 +64,7 @@ class StoreSetting(Action):
             #
             # in the help output.
             metavar=(self._wrapped_action.metavar or dest.upper()),
+            propagate=propagate,
         )
 
     @property

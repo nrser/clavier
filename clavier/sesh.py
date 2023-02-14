@@ -225,6 +225,7 @@ class Sesh:
                 key=self.get_app_setting_key("backtrace", bool),
                 flags=("-B", "--backtrace"),
                 action="store_true",
+                propagate=True,
                 help="Print backtrace on error.",
             ),
             Setting(

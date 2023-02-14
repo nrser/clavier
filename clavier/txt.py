@@ -13,14 +13,43 @@ So... here it is. Once again.
 
 This module prints things... as plain, markdown-ish strings. It doesn't depend
 on anything outside the standard library, and should probably stay that way.
+
+> ❗❗ WARNING ❗❗
+>
+> This module is used in already bad situations, like formatting error messages.
+>
+> As such, it must **_NOT_** depend on any other parts of the package, and
+> it must **_NOT_** raise exceptions unless there is a logic error that needs
+> to be fixed.
+>
 """
 
 from typing import Sequence, Callable, Any, Iterable, Union
 import inspect
 from pathlib import Path
 import shlex
+import os
 
 import splatlog
+
+from rich.console import Console
+from rich.pretty import Pretty
+from rich.padding import Padding
+
+_CONSOLE = Console(
+    file=open(os.devnull, "w"),
+    force_terminal=False,
+    width=80,
+)
+
+fmt = splatlog.lib.fmt
+fmt_type_of = splatlog.lib.fmt_type_of
+
+
+def fmt_pretty(obj: object) -> str:
+    with _CONSOLE.capture() as capture:
+        _CONSOLE.print(Padding(Pretty(obj), (0, 4)))
+    return capture.get()
 
 
 def tick(value) -> str:
@@ -52,17 +81,6 @@ def fmt_cmd(
             lines[-1] += " "
         lines[-1] += quoted
     return "\n".join(lines)
-
-
-fmt_type_of = splatlog.lib.fmt_type_of
-
-
-def fmt(x: Any) -> str:
-    if inspect.isclass(x):
-        return fmt_class(x)
-    if isinstance(x, Path):
-        return fmt_path(x)
-    return splatlog.lib.fmt(x)
 
 
 def coordinate(
