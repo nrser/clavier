@@ -230,9 +230,18 @@ class RichHelpFormatter(HelpFormatter):
     # ========================================================================
 
     def _format_header(self) -> _RT:
+        commands = self._prog.split()
+        # text = " > ".join(commands) + " Command"
+        text = " ➤ ".join(commands) + " Command"
+
+        # if commands:
+        #     text = f"{name} | {' '.join(commands)} Command"
+        # else:
+        #     text = name
+
         return Group(
             Text(
-                self._prog,
+                text,
                 justify="center",
                 style="help.header.text",
             ),
