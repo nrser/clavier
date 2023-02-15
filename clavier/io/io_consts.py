@@ -39,6 +39,7 @@ THEME = Theme(
         ### Invocation ###
         "help.action.invocation.flag": _S(color="yellow", bold=True),
         "help.action.invocation.metavar": _S(color="cyan", bold=True),
+        "prog": _S(bgcolor="cyan", color="white", bold=True),
     }
 )
 

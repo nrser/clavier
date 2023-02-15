@@ -1,1 +1,3 @@
+from .rich_section_formatter import RichSectionFormatter
 from .rich_action_formatter import RichActionFormatter
+from .rich_help_formatter import RichHelpFormatter

@@ -29,6 +29,7 @@ from argparse import (
     ONE_OR_MORE,
     REMAINDER,
     PARSER,
+    _HelpAction,
     Action,
     HelpFormatter,
     _ArgumentGroup,
@@ -43,7 +44,7 @@ from typing import (
     TypeVar,
     cast,
 )
-from clavier.arg_par.actions import ClavierAction
+from clavier.arg_par.actions import ClavierAction, ShortHelpAction
 
 import splatlog
 from rich.syntax import Syntax
@@ -51,15 +52,15 @@ from rich.text import Text
 from rich.console import Group, RenderableType as _RT, Console
 from rich.markdown import Markdown
 from rich.table import Table
-from rich.pretty import Pretty
-from rich.columns import Columns
-from rich.measure import Measurement
 from rich.padding import Padding
 from rich.highlighter import RegexHighlighter
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.style import Style as _S
 
 from clavier import io, err, cfg, txt
-from .formatters.rich_action_formatter import RichActionFormatter
-from .formatters.rich_section_formatter import RichSectionFormatter
+from .rich_action_formatter import RichActionFormatter
+from .rich_section_formatter import RichSectionFormatter
 
 _LOG = splatlog.get_logger(__name__)
 _CFG = cfg.get_scope(__name__)
@@ -84,36 +85,82 @@ class RichHelpFormatter(HelpFormatter):
     Adapted from `argparse.HelpFormatter`.
     """
 
+    @classmethod
+    def _fetch_config(cls) -> tuple[int, int, float]:
+        min_width, indent, invocation_ratio = _CFG._extract_(
+            ("min_width", int),
+            ("indent", int),
+            ("invocation_ratio", float),
+        )
+
+        if min_width <= 0:
+            raise ValueError(
+                f"Configured value for {_CFG._key_ / 'min_width'} must be "
+                f"positive integer; found {min_width!r}"
+            )
+
+        if indent < 0 or indent % 2 != 0:
+            raise ValueError(
+                f"Configured value for {_CFG._key_ / 'indent'} must be "
+                f"non-negative even integer; found {indent!r}"
+            )
+
+        if not (0 <= invocation_ratio <= 1):
+            raise ValueError(
+                f"Configured value for {_CFG._key_ / 'invocation_ratio'} must "
+                f"be in [0, 1]; found {invocation_ratio!r}"
+            )
+
+        return min_width, indent, invocation_ratio
+
     _Section = RichSectionFormatter
     _ActionFormatter = RichActionFormatter
 
     _prog: str
     _console: Console
+    _short: bool
+    _width: int
+    _indent: int
+
     _root_section: _Section
     _current_section: _Section
-    _width: int
 
-    def __init__(self, prog: str, *, width=None):
+    def __init__(
+        self,
+        prog: str,
+        *,
+        console: Console = io.OUT,
+        short: bool = False,
+        width: int | None = None,
+    ):
         self._prog = prog
 
         self._root_section = self._Section(self)
         self._current_section = self._root_section
 
+        min_width, indent, invocation_ratio = self._fetch_config()
+
+        self._indent = indent
+
         if width is None:
-            self._width = max(
-                (
-                    shutil.get_terminal_size().columns - 2,
-                    _CFG[{"min_width": int}],
-                )
-            )
+            self._width = max(console.width, min_width)
         else:
-            self._width = width
+            self._width = max(width, min_width)
 
-        self._action_invocation_max_width = (
-            int(self._width * _CFG[{"invocation_ratio": float}]) - 4
-        )
+        self._action_invocation_max_width = int(
+            self._width * invocation_ratio
+        ) - (indent * 2)
 
-        self._console = io.OUT
+        self._console = console
+        self._short = short
+
+    @property
+    def prog(self) -> str:
+        return self._prog
+
+    @property
+    def short(self) -> bool:
+        return self._short
 
     def _add_item(
         self,
@@ -163,6 +210,9 @@ class RichHelpFormatter(HelpFormatter):
     def add_arguments(self, actions: Iterable[Action]) -> None:
         self._add_item(self._format_actions, actions)
 
+    def add_header(self) -> None:
+        self._add_item(self._format_header)
+
     # =======================
     # Help-formatting methods
     # =======================
@@ -173,24 +223,50 @@ class RichHelpFormatter(HelpFormatter):
     def format_help(self) -> str:
         return io.render_to_string(self.format_rich())
 
-    def _format_action(self, action: Action) -> Group:
-        # determine the required width and the entry label
-        action_header = self._format_action_invocation(action)
+    # Internal Methods
+    # ========================================================================
 
-        # collect the pieces of the action help
-        parts: list[_RT] = [action_header]
+    def _format_header(self) -> _RT:
+        return Group(
+            Text(
+                self._prog,
+                justify="center",
+                style=_S(
+                    color="red",
+                    # bgcolor="#272822",
+                    bold=True,
+                ),
+            ),
+            Rule(
+                # characters="=",
+                style=_S(
+                    # color="black",
+                    # bgcolor="#272822",
+                    color="#272822"
+                ),
+            ),
+        )
 
-        # if there was help for the action, add lines of help text
-        if action.help:
-            help_text = self._expand_help(action)
-            parts.append(help_text)
+    # Replaced by `_format_actions`
+    #
+    # def _format_action(self, action: Action) -> Group:
+    #     # determine the required width and the entry label
+    #     action_header = self._format_action_invocation(action)
 
-        # if there are any sub-actions, add their help as well
-        for subaction in self._iter_subactions(action):
-            parts.append(self._format_action(subaction))
+    #     # collect the pieces of the action help
+    #     parts: list[_RT] = [action_header]
 
-        # return a render group
-        return Group(*parts)
+    #     # if there was help for the action, add lines of help text
+    #     if action.help:
+    #         help_text = self._expand_help(action)
+    #         parts.append(help_text)
+
+    #     # if there are any sub-actions, add their help as well
+    #     for subaction in self._iter_subactions(action):
+    #         parts.append(self._format_action(subaction))
+
+    #     # return a render group
+    #     return Group(*parts)
 
     def _format_action_invocation(self, action: Action) -> _RT:
         if not action.option_strings:
@@ -224,13 +300,30 @@ class RichHelpFormatter(HelpFormatter):
             width = sum((len(text) for text in items))
 
             if width > self._action_invocation_max_width:
-                text = Text(",\n").join(items)
+                text = Text(",\n" + (" " * self._indent)).join(items)
             else:
                 text = Text(", ").join(items)
 
             InvocationHighLighter().highlight(text)
 
             return text
+
+    def _is_formatting_action(self, action: Action) -> bool:
+        # Suppressed actions are always omitted
+        if action.help == SUPPRESS:
+            return False
+
+        if self._short:
+            # Omit help actions themselves in short format
+            if isinstance(action, (_HelpAction, ShortHelpAction)):
+                return False
+
+            # Omit inherited actions in short format
+            if isinstance(action, ClavierAction) and action.is_inherited:
+                return False
+
+        # Everything else is ok (for now)
+        return True
 
     def _format_actions(
         self,
@@ -244,7 +337,7 @@ class RichHelpFormatter(HelpFormatter):
                 depth=_depth,
             )
             for action in actions
-            if action.help != SUPPRESS
+            if self._is_formatting_action(action)
         ]
 
         if len(action_formatters) == 0:
@@ -260,26 +353,17 @@ class RichHelpFormatter(HelpFormatter):
             if af.invocation_measurement.maximum < inv_max_width
         )
 
-        # _LOG.debug(
-        #     "Rendering actions",
-        #     inv_max_width=inv_max_width,
-        #     inv_width=inv_width,
-        # )
+        def make_table():
+            table = Table(
+                padding=(0, self._indent // 2), show_header=False, box=None
+            )
+            table.add_column(width=inv_width + self._indent)
+            table.add_column()
+            table.add_column()
 
-        # for af in action_formatters:
-        #     _LOG.debug(
-        #         "Action {} widths",
-        #         af.action.option_strings,
-        #         min=af.invocation_measurement.minimum,
-        #         max=af.invocation_measurement.maximum,
-        #         oversized=(af.invocation_measurement.maximum > inv_max_width),
-        #     )
+            return table
 
-        table = Table(padding=(0, 1), show_header=False, box=None)
-        table.add_column(width=inv_width + 2)
-        table.add_column()
-        table.add_column()
-
+        table = make_table()
         grouper.append(table)
 
         for index, af in enumerate(action_formatters):
@@ -287,13 +371,12 @@ class RichHelpFormatter(HelpFormatter):
                 table.add_row(io.EMPTY, io.EMPTY, io.EMPTY)
 
             if af.invocation_measurement.maximum > inv_max_width:
-                grouper.append(af.invocation)
+                grouper.append(
+                    Padding(af.invocation, pad=(0, self._indent // 2))
+                )
                 grouper.append(io.NEWLINE)
 
-                table = Table(padding=(0, 1), show_header=False, box=None)
-                table.add_column(width=inv_width + 2)
-                table.add_column()
-                table.add_column()
+                table = make_table()
                 table.add_row(af.labels, af.type, af.contents)
 
                 grouper.append(table)
@@ -308,7 +391,7 @@ class RichHelpFormatter(HelpFormatter):
                     af.contents,
                 )
 
-        return Padding(grouper.to_group(), pad=(0, 1))
+        return Padding(grouper.to_group(), pad=(0, self._indent // 2))
 
     def _format_actions_usage(
         self, actions: list[Action], groups: Iterable[_ArgumentGroup]
@@ -450,7 +533,7 @@ class RichHelpFormatter(HelpFormatter):
             usage = " ".join([s for s in [prog, action_usage] if s])
 
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
-        return Syntax(usage, "bash", padding=(1, 2))
+        return Syntax(usage, "bash", padding=(1, self._indent))
 
     def _format_text(self, text: str) -> _RT:
         text = dedent(text)

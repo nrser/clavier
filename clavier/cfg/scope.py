@@ -26,7 +26,7 @@ class Scope(Config):
         object.__setattr__(self, "_key", key)
 
     @property
-    def key(self) -> Key:
+    def _key_(self) -> Key:
         return self._key
 
     def _get_parent_(self) -> Config:
@@ -48,7 +48,7 @@ class Scope(Config):
         return False
 
     def _as_key_(self, key_matter: KeyMatter) -> Key:
-        return Key(self._key, key_matter)
+        return self._key / key_matter
 
     def _description_(self) -> str:
         return "{}[{}]".format(

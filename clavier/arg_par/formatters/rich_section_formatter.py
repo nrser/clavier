@@ -7,7 +7,7 @@ from rich.console import Group, RenderableType as _RT
 from clavier import io
 
 if TYPE_CHECKING:
-    from ..rich_help_formatter import RichHelpFormatter
+    from .rich_help_formatter import RichHelpFormatter
 
 
 class RichSectionFormatter:
@@ -53,7 +53,7 @@ class RichSectionFormatter:
         if self.parent is None:
             return Group(*items)
 
-        if self.title is None or self.title == "":
+        if self.formatter.short or self.title is None or self.title == "":
             return Group(*items, io.NEWLINE)
         else:
             return Group(

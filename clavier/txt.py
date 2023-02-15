@@ -29,6 +29,7 @@ import inspect
 from pathlib import Path
 import shlex
 import os
+import re
 
 import splatlog
 
@@ -44,6 +45,39 @@ _CONSOLE = Console(
 
 fmt = splatlog.lib.fmt
 fmt_type_of = splatlog.lib.fmt_type_of
+
+
+_SQUISH_RE = re.compile(r"\s+")
+
+
+def squish(string: str) -> str:
+    """
+    Like the ol' Rails method, condense any whitespace runs into a single space
+    and strip any leading and trailing whitespace.
+
+    Basically, useful for normalizing shell-command-like strings that are
+    written out in multiple lines.
+
+    Doesn't have any sense of "literal whitespace" inside the `string`, so you
+    can't really use it if you need to preserve whitespace in values or
+    whatever.
+
+    ##### Examples #####
+
+    ```python
+
+    >>> squish('''
+    ...     appsrc
+    ...        emit-signals=true
+    ...        is-live=true
+    ...    ! videoscale
+    ... ''')
+    'appsrc emit-signals=true is-live=true ! videoscale'
+
+    ```
+    """
+
+    return _SQUISH_RE.sub(" ", string).strip()
 
 
 def fmt_pretty(obj: object) -> str:

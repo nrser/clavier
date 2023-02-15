@@ -126,11 +126,15 @@ class StoreSetting(ClavierAction):
             delattr(namespace, self.dest)
 
 
-class _HelpAction(Action):
+class ShortHelpAction(Action):
     def __init__(
-        self, option_strings, dest=SUPPRESS, default=SUPPRESS, help=None
+        self,
+        option_strings: Sequence[str],
+        dest: str = SUPPRESS,
+        default: Any = SUPPRESS,
+        help: str | None = None,
     ):
-        super(_HelpAction, self).__init__(
+        super().__init__(
             option_strings=option_strings,
             dest=dest,
             default=default,
@@ -138,6 +142,12 @@ class _HelpAction(Action):
             help=help,
         )
 
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.print_help()
+    def __call__(
+        self,
+        parser: "ArgumentParser",
+        namespace: Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ):
+        parser.print_help(short=True)
         parser.exit()

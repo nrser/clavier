@@ -14,7 +14,7 @@ from rich.padding import Padding
 from clavier import io, txt
 
 if TYPE_CHECKING:
-    from ..rich_help_formatter import RichHelpFormatter
+    from .rich_help_formatter import RichHelpFormatter
 
 
 class _InfoTableRow(NamedTuple):

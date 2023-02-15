@@ -17,7 +17,7 @@ from splatlog.lib.typeguard import satisfies
 from splatlog.lib.text import fmt, fmt_type_of
 from rich.repr import RichReprResult
 
-from clavier import etc, txt
+from clavier import etc, txt, err
 
 from .key import Key, KeyMatter
 
@@ -27,6 +27,16 @@ if TYPE_CHECKING:
 TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
 T = TypeVar("T")
+
+_ExtractKey = Key[T] | tuple[KeyMatter, type[T]]
+T_1 = TypeVar("T_1")
+T_2 = TypeVar("T_2")
+T_3 = TypeVar("T_3")
+T_4 = TypeVar("T_4")
+T_5 = TypeVar("T_5")
+T_6 = TypeVar("T_6")
+T_7 = TypeVar("T_7")
+T_8 = TypeVar("T_8")
 
 
 class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
@@ -246,7 +256,7 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
         raise KeyError(f"Config has no key or scope {repr(key)}")
 
-    # Attribute Access
+    # Attribute-Style Access
     # ------------------------------------------------------------------------
 
     def __getattr__(self, name: str) -> Any:
@@ -256,6 +266,112 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
             raise error
         except Exception as error:
             raise AttributeError(f"Not found: {repr(name)}") from error
+
+    # Multi-Key Access
+    # ------------------------------------------------------------------------
+
+    @overload
+    def _extract_(
+        self, k_1: _ExtractKey[T_1], k_2: _ExtractKey[T_2], /
+    ) -> tuple[T_1, T_2]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        /,
+    ) -> tuple[T_1, T_2, T_3]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        k_4: _ExtractKey[T_4],
+        /,
+    ) -> tuple[T_1, T_2, T_3, T_4]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        k_4: _ExtractKey[T_4],
+        k_5: _ExtractKey[T_5],
+        /,
+    ) -> tuple[T_1, T_2, T_3, T_4, T_5]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        k_4: _ExtractKey[T_4],
+        k_5: _ExtractKey[T_5],
+        k_6: _ExtractKey[T_6],
+        /,
+    ) -> tuple[T_1, T_2, T_3, T_4, T_5, T_6]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        k_4: _ExtractKey[T_4],
+        k_5: _ExtractKey[T_5],
+        k_6: _ExtractKey[T_6],
+        k_7: _ExtractKey[T_7],
+        /,
+    ) -> tuple[T_1, T_2, T_3, T_4, T_5, T_6, T_7]:
+        ...
+
+    @overload
+    def _extract_(
+        self,
+        k_1: _ExtractKey[T_1],
+        k_2: _ExtractKey[T_2],
+        k_3: _ExtractKey[T_3],
+        k_4: _ExtractKey[T_4],
+        k_5: _ExtractKey[T_5],
+        k_6: _ExtractKey[T_6],
+        k_7: _ExtractKey[T_7],
+        k_8: _ExtractKey[T_8],
+        /,
+    ) -> tuple[T_1, T_2, T_3, T_4, T_5, T_6, T_7, T_8]:
+        ...
+
+    def _extract_(self, *keys):
+        """Extract up to 8 typed values in a single call.
+
+        All arguments must be a
+        """
+        values = []
+
+        for i, k in enumerate(keys):
+            match k:
+                case Key():
+                    key = k
+                case (km, v_type):
+                    key = Key(km, v_type=v_type)
+                case _:
+                    raise err.ArgTypeError(
+                        f"keys[{i}]", Key | tuple[KeyMatter, type[T]], k
+                    )
+
+            values.append(self[key])
+
+        return tuple(values)
 
     # Logging / Printing
     # ------------------------------------------------------------------------

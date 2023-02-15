@@ -2,15 +2,29 @@ from textwrap import dedent
 from typing import Any, Callable
 from . import txt
 
-from rich.pretty import Pretty
-
 
 class ArgTypeError(TypeError):
-    def __init__(self, arg_name, expected, given):
-        super().__init__(
-            f"Expected `{arg_name}` to be {txt.coordinate(expected, 'or')}, given "
-            f"{txt.fmt_class(type(given))}: {repr(given)}"
+    MULTILINE_TEMPLATE = dedent(
+        """\
+        Expected `{name}` to be `{expected_type}`.
+
+        Given `{type}`:
+
+        {value}
+        """
+    )
+
+    INLINE_TEMPLATE = txt.squish(MULTILINE_TEMPLATE)
+
+    def __init__(self, name: str, expected_type: Any, value: Any):
+        message = self.MULTILINE_TEMPLATE.format(
+            name=name,
+            expected_type=txt.fmt(expected_type),
+            type=txt.fmt_type_of(value),
+            value=txt.fmt_pretty(value),
         )
+
+        super().__init__(message)
 
 
 class ReturnTypeError(TypeError):

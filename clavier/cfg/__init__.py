@@ -113,9 +113,10 @@ with GLOBAL.configure(SELF_ROOT_KEY, src=__file__) as clavier:
             children_modules.on_error = "warn"
 
     with clavier.configure("arg_par") as arg_par:
-        with arg_par.configure("rich_help_formatter") as help_formatter:
-            help_formatter.min_width = 64
-            help_formatter.invocation_ratio = 0.33
+        with arg_par.configure("formatters.rich_help_formatter") as formatter:
+            formatter.min_width = 64
+            formatter.invocation_ratio = 0.33
+            formatter.indent = 2
 
 
 # Convenience Functions
@@ -224,15 +225,15 @@ def get_pkg_scope(
     it (`"calvier.cfg.__init__"` in this case).
 
     ```python
-    >>> root_scope = get_root_scope(__name__)
+    >>> pkg_scope = get_pkg_scope(__name__)
 
-    >>> root_scope
+    >>> pkg_scope
     <Scope[clavier] -> Container(name=GLOBAL)>
 
-    >>> isinstance(root_scope, Scope)
+    >>> isinstance(pkg_scope, Scope)
     True
 
-    >>> root_scope.key == Key("clavier")
+    >>> pkg_scope._key_ == Key("clavier")
     True
 
     ```
@@ -242,7 +243,7 @@ def get_pkg_scope(
     when
 
     ```python
-    >>> get_root_scope("some.made_up.package")
+    # >>> get_pkg_scope("some.made_up.package")
 
     ```
     """

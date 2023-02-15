@@ -1,20 +1,29 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from inspect import signature
-from typing import Any, Callable, Iterable, NoReturn, Sequence, TypeGuard, cast
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Iterable,
+    NoReturn,
+    Sequence,
+    TypeGuard,
+    cast,
+)
 import argparse
 from pathlib import Path
 import os
 from gettext import gettext as _
-from clavier.arg_par.actions import ClavierAction, StoreSetting
+from clavier.arg_par.actions import ClavierAction, ShortHelpAction, StoreSetting
 
 from rich.console import Console
 import splatlog
 from splatlog.lib.text import fmt, fmt_type_of
 
-from clavier import io, err, cfg, txt
+from clavier import io, err, cfg
 
-from .rich_help_formatter import RichHelpFormatter
+from .formatters import RichHelpFormatter
 
 from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
 from .subparsers import Subparsers
@@ -108,6 +117,7 @@ class ArgumentParser(argparse.ArgumentParser):
     notes: str | None
     hook_names: Sequence[str]
     settings: tuple[Setting, ...]
+    formatter_class: type[RichHelpFormatter]
 
     def __init__(
         self,
@@ -117,9 +127,13 @@ class ArgumentParser(argparse.ArgumentParser):
         notes: str | None = None,
         hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
         settings: Iterable[Setting] = (),
+        add_help: bool = True,
+        formatter_class: type[RichHelpFormatter] = RichHelpFormatter,
         **kwds,
     ):
-        super().__init__(*args, formatter_class=RichHelpFormatter, **kwds)
+        super().__init__(
+            *args, formatter_class=formatter_class, add_help=False, **kwds
+        )
 
         self.notes = notes
         self.hook_names = hook_names
@@ -133,6 +147,20 @@ class ArgumentParser(argparse.ArgumentParser):
 
         for setting in settings:
             self.add_setting(setting)
+
+        if add_help:
+            self.add_argument(
+                "-h",
+                action=ShortHelpAction,
+                default=argparse.SUPPRESS,
+                help=_("show this help message and exit"),
+            )
+            self.add_argument(
+                "--help",
+                action="help",
+                default=argparse.SUPPRESS,
+                help=_("show this help message and exit"),
+            )
 
     def add_setting(self, setting: Setting) -> StoreSetting:
         wrapped_action = self._registry_get(
@@ -224,20 +252,32 @@ class ArgumentParser(argparse.ArgumentParser):
     def add_children(self, module__name__, module__path__):
         self.add_subparsers().add_children(module__name__, module__path__)
 
-    def _get_formatter(self) -> RichHelpFormatter:
-        formatter = super()._get_formatter()
+    def _get_formatter(
+        self,
+        console: Console = io.OUT,
+        short: bool = False,
+        width: int | None = None,
+    ) -> RichHelpFormatter:
+        return self.formatter_class(
+            prog=self.prog,
+            console=console,
+            short=short,
+            width=width,
+        )
 
-        if not isinstance(formatter, RichHelpFormatter):
-            raise err.ReturnTypeError(
-                function=self._get_formatter,
-                expected_type=RichHelpFormatter,
-                return_value=formatter,
-            )
+    def format_rich_help(
+        self,
+        console: Console = io.OUT,
+        short: bool = False,
+        width: int | None = None,
+    ):
+        formatter = self._get_formatter(
+            console=console,
+            short=short,
+            width=width,
+        )
 
-        return formatter
-
-    def format_rich_help(self):
-        formatter = self._get_formatter()
+        formatter.add_header()
 
         # usage
         formatter.add_usage(
@@ -270,14 +310,14 @@ class ArgumentParser(argparse.ArgumentParser):
     def format_help(self) -> str:
         return io.render_to_string(self.format_rich_help())
 
-    def print_help(self, file=None):
+    def print_help(self, file: IO[str] | None = None, short: bool = False):
         if file is None:
             console = io.OUT
         elif isinstance(file, Console):
             console = file
         else:
             console = Console(file=file)
-        console.print(self.format_rich_help())
+        console.print(self.format_rich_help(console=console, short=short))
 
     def error(self, message: str) -> NoReturn:
         """Prints a usage message incorporating the message to stderr and
