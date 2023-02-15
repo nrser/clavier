@@ -144,6 +144,7 @@ class ArgumentParser(argparse.ArgumentParser):
             action=StoreSetting,
             key=setting.key,
             wrapped_action=wrapped_action,
+            owner=self,
             propagate=setting.propagate,
             help=setting.help,
         )
@@ -160,12 +161,21 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def add_subparsers(self, **kwds) -> Subparsers:
         kwds["hook_names"] = self.hook_names
+        kwds["parent_name"] = self.prog
 
-        kwds["propagated_actions"] = [
-            a
+        propagated_actions = [
+            a.clone_child()
             for a in self._actions
             if isinstance(a, ClavierAction) and a.propagate
         ]
+
+        self._log.debug(
+            "Propagating actions to subparser",
+            propagated_actions=propagated_actions,
+            kwds=kwds,
+        )
+
+        kwds["propagated_actions"] = propagated_actions
 
         subparsers = super().add_subparsers(**kwds)
 
@@ -216,14 +226,14 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def _get_formatter(self) -> RichHelpFormatter:
         formatter = super()._get_formatter()
+
         if not isinstance(formatter, RichHelpFormatter):
-            raise TypeError(
-                "expected formatter to be a {}, found a {}: {}".format(
-                    splatlog.lib.fmt(RichHelpFormatter),
-                    splatlog.lib.fmt_type_of(formatter),
-                    splatlog.lib.fmt(formatter),
-                )
+            raise err.ReturnTypeError(
+                function=self._get_formatter,
+                expected_type=RichHelpFormatter,
+                return_value=formatter,
             )
+
         return formatter
 
     def format_rich_help(self):

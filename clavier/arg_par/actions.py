@@ -1,5 +1,6 @@
 from argparse import OPTIONAL, Action, SUPPRESS, Namespace
-from typing import TYPE_CHECKING, Any, Sequence
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Optional, Sequence, TypeVar, Union
 
 import splatlog
 
@@ -9,15 +10,42 @@ if TYPE_CHECKING:
     from .argument_parser import ArgumentParser
 
 
+TClavierAction = TypeVar("TClavierAction", bound="ClavierAction")
+
+
 class ClavierAction(Action):
+    _owner: Optional["ArgumentParser"]
     _propagate: bool
+    _is_inherited: bool
 
-    def __init__(self, *args, propagate: bool = False, **kwds):
+    def __init__(
+        self,
+        *args,
+        propagate: bool = False,
+        owner: Optional["ArgumentParser"] = None,
+        **kwds
+    ):
         super().__init__(*args, **kwds)
+        self._owner = owner
         self._propagate = propagate
+        self._is_inherited = False
 
+    @property
+    def owner(self) -> Optional["ArgumentParser"]:
+        return self._owner
+
+    @property
     def propagate(self) -> bool:
         return self._propagate
+
+    @property
+    def is_inherited(self) -> bool:
+        return self._is_inherited
+
+    def clone_child(self: TClavierAction) -> TClavierAction:
+        child = deepcopy(self)
+        child._is_inherited = True
+        return child
 
 
 class StoreSetting(ClavierAction):
@@ -33,6 +61,7 @@ class StoreSetting(ClavierAction):
         dest: str,
         key: cfg.Key,
         wrapped_action: type[Action],
+        owner: Optional["ArgumentParser"] = None,
         propagate: bool = False,
         **kwds
     ):
@@ -64,6 +93,7 @@ class StoreSetting(ClavierAction):
             #
             # in the help output.
             metavar=(self._wrapped_action.metavar or dest.upper()),
+            owner=owner,
             propagate=propagate,
         )
 

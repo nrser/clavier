@@ -2,6 +2,7 @@ from argparse import Action, SUPPRESS
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Generator, NamedTuple
+from clavier.arg_par.actions import ClavierAction
 
 from rich.text import Text
 from rich.console import Group, RenderableType as _RT
@@ -98,6 +99,7 @@ class RichActionFormatter:
         g = io.Grouper()
 
         g.append(self.help)
+        # g.append(self.labels)
         g.append(self.info_table)
         g.append(self.subactions)
 
@@ -109,5 +111,24 @@ class RichActionFormatter:
             return io.EMPTY
         return Pretty(txt.fmt(self.action.type))
 
-    def to_row(self) -> tuple[_RT, _RT, _RT]:
-        return (self.invocation, self.type, self.contents)
+    def label(self, name: str, icon: str = "🏷 ") -> Text:
+        # Tried with an icon, ended up just feeling too noisy
+        # return Text.assemble(
+        #     " ",
+        #     icon,
+        #     " ",
+        #     (name, "help.action.label.name"),
+        #     " ",
+        #     style="help.action.label",
+        # )
+
+        return Text(name, style="help.action.label.name")
+
+    @cached_property
+    def labels(self) -> _RT:
+        labels = io.Grouper()
+
+        if isinstance(self.action, ClavierAction) and self.action.is_inherited:
+            labels.append(self.label("inherited", "👪"))
+
+        return labels.to_group()

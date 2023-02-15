@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Iterable, TYPE_CHECKING, Sequence
 import argparse
 
+import splatlog
 from rich.repr import RichReprResult
 
 from clavier import dyn
@@ -19,21 +20,32 @@ class Subparsers(argparse._SubParsersAction):
     passing-down `hook_names`.
     """
 
+    _log = splatlog.LoggerProperty()
+
+    parent_name: str
     hook_names: Iterable[str]
     propagated_actions: tuple[ClavierAction, ...]
 
     def __init__(
         self,
         *args,
+        parent_name: str = "(unknown)",
         hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
         propagated_actions: tuple[ClavierAction, ...] = (),
         **kwds,
     ):
         super().__init__(*args, **kwds)
+        self.parent_name = parent_name
         self.hook_names = hook_names
         self.propagated_actions = propagated_actions
 
-    def add_parser(self, name, **kwds) -> "ArgumentParser":
+    @property
+    def _splatlog_self_(self) -> str:
+        return f"Subparsers(parent_name={self.parent_name!r})"
+
+    def add_parser(self, name: str, **kwds) -> "ArgumentParser":
+        self._log.debug("Adding parser...", name=name, kwds=kwds)
+
         if "help" in kwds and "description" not in kwds:
             kwds["description"] = kwds["help"]
 
@@ -43,6 +55,9 @@ class Subparsers(argparse._SubParsersAction):
         parser = super().add_parser(name, **kwds)
 
         for action in self.propagated_actions:
+            self._log.debug(
+                "Propagating action to {} parser...", name, action=action
+            )
             parser._add_action(action)
 
         return parser

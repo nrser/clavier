@@ -43,6 +43,7 @@ from typing import (
     TypeVar,
     cast,
 )
+from clavier.arg_par.actions import ClavierAction
 
 import splatlog
 from rich.syntax import Syntax
@@ -68,13 +69,8 @@ TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
 
 
-class _InfoTableRow(NamedTuple):
-    name: _RT
-    value: _RT
-
-
 class InvocationHighLighter(RegexHighlighter):
-    base_style = "help.invocation."
+    base_style = "help.action.invocation."
 
     highlights = [
         r"(?P<flag>--[^\s=]+)(?:[\s=](?P<metavar>\w+))?",
@@ -237,11 +233,16 @@ class RichHelpFormatter(HelpFormatter):
             return text
 
     def _format_actions(
-        self, actions: Iterable[Action], _depth: int = 0
+        self,
+        actions: Iterable[Action],
+        _depth: int = 0,
     ) -> _RT:
-
         action_formatters = [
-            self._ActionFormatter(self, action, _depth)
+            self._ActionFormatter(
+                help_formatter=self,
+                action=action,
+                depth=_depth,
+            )
             for action in actions
             if action.help != SUPPRESS
         ]
@@ -293,12 +294,19 @@ class RichHelpFormatter(HelpFormatter):
                 table.add_column(width=inv_width + 2)
                 table.add_column()
                 table.add_column()
-                table.add_row(io.EMPTY, af.type, af.contents)
+                table.add_row(af.labels, af.type, af.contents)
 
                 grouper.append(table)
 
             else:
-                table.add_row(af.invocation, af.type, af.contents)
+                table.add_row(
+                    Group(
+                        af.invocation,
+                        af.labels,
+                    ),
+                    af.type,
+                    af.contents,
+                )
 
         return Padding(grouper.to_group(), pad=(0, 1))
 

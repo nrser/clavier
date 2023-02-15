@@ -152,11 +152,15 @@ class Sesh:
         parser: ArgumentParser | None = None,
         prog_name: str | None = None,
         autocomplete: bool = True,
+        setup_logging: bool = True,
     ):
         self._pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
         self._context = cfg.current.create_derived_context()
+
+        if setup_logging:
+            self.setup()
 
         if parser is None:
             self._parser = ArgumentParser.create(
@@ -232,11 +236,13 @@ class Sesh:
                 key=self.get_app_setting_key("verbosity", int),
                 flags=("-V", "--verbose"),
                 action="count",
+                propagate=True,
                 help="Make noise. Repeat for more noise.",
             ),
             Setting(
                 key=self.get_app_setting_key("output", str),
                 flags=("-O", "--output"),
+                propagate=True,
                 help=io.View.help(),
             ),
         ]
