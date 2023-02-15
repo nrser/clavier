@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Generator, NamedTuple
 from clavier.arg_par.actions import ClavierAction
+from clavier.arg_par.subparsers import Subparsers
 
 from rich.text import Text
 from rich.console import Group, RenderableType as _RT
@@ -55,6 +56,9 @@ class RichActionFormatter:
 
     @cached_property
     def choices_row(self) -> _InfoTableRow | None:
+        if isinstance(self.action, Subparsers):
+            return None
+
         if (_choices := self.action.choices) and (choices := tuple(_choices)):
             return _InfoTableRow(
                 Text("choices", "help.action.info.name"),

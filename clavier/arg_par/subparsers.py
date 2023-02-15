@@ -32,9 +32,13 @@ class Subparsers(argparse._SubParsersAction):
         parent_name: str = "(unknown)",
         hook_names: Sequence[str] = DEFAULT_HOOK_NAMES,
         propagated_actions: tuple[ClavierAction, ...] = (),
+        metavar: str | tuple[str, ...] | None = None,
         **kwds,
     ):
-        super().__init__(*args, **kwds)
+        if metavar is None:
+            metavar = "COMMAND"
+
+        super().__init__(*args, metavar=metavar, **kwds)
         self.parent_name = parent_name
         self.hook_names = hook_names
         self.propagated_actions = propagated_actions

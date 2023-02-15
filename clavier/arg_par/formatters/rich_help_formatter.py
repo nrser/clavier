@@ -85,6 +85,11 @@ class RichHelpFormatter(HelpFormatter):
     Adapted from `argparse.HelpFormatter`.
     """
 
+    _log = splatlog.LoggerProperty()
+
+    _Section = RichSectionFormatter
+    _ActionFormatter = RichActionFormatter
+
     @classmethod
     def _fetch_config(cls) -> tuple[int, int, float]:
         min_width, indent, invocation_ratio = _CFG._extract_(
@@ -112,9 +117,6 @@ class RichHelpFormatter(HelpFormatter):
             )
 
         return min_width, indent, invocation_ratio
-
-    _Section = RichSectionFormatter
-    _ActionFormatter = RichActionFormatter
 
     _prog: str
     _console: Console
@@ -153,6 +155,10 @@ class RichHelpFormatter(HelpFormatter):
 
         self._console = console
         self._short = short
+
+    @property
+    def _splatlog_self_(self):
+        return {"prog": self.prog}
 
     @property
     def prog(self) -> str:
