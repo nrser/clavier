@@ -25,19 +25,19 @@ class _InfoTableRow(NamedTuple):
 
 @dataclass
 class RichActionFormatter:
-    help_formatter: "RichHelpFormatter"
+    formatter: "RichHelpFormatter"
     action: Action
     depth: int
 
     @cached_property
     def invocation(self) -> _RT:
-        return self.help_formatter._format_action_invocation(self.action)
+        return self.formatter._format_action_invocation(self.action)
 
     @cached_property
     def invocation_measurement(self) -> Measurement:
         return Measurement.get(
-            self.help_formatter._console,
-            self.help_formatter._console.options,
+            self.formatter._console,
+            self.formatter._console.options,
             self.invocation,
         )
 
@@ -88,15 +88,15 @@ class RichActionFormatter:
     def subactions(self) -> _RT | None:
         if hasattr(self.action, "_get_subactions"):
             # pylint: disable=protected-access
-            return self.help_formatter._format_actions(
-                list(self.help_formatter._iter_subactions(self.action)),
+            return self.formatter._format_actions(
+                list(self.formatter._iter_subactions(self.action)),
                 _depth=self.depth + 1,
             )
 
     @cached_property
     def help(self) -> _RT | None:
         if self.action.help:
-            return self.help_formatter._expand_help(self.action)
+            return self.formatter._expand_help(self.action)
 
     @cached_property
     def contents(self) -> _RT:

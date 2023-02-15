@@ -29,7 +29,6 @@ THEME = Theme(
         # --------------------------------------------------------------------
         "help.action.info.name": _S(color="white", italic=True, dim=True),
         "help.action.str_value": _S(color="green"),
-        "help.action.metavar": _S(color="yellow"),
         # "help.action.label": _S(bgcolor="#282C34"),
         "help.action.label.name": _S(
             color="white",
@@ -38,7 +37,9 @@ THEME = Theme(
         ),
         ### Invocation ###
         "help.action.invocation.flag": _S(color="yellow", bold=True),
-        "help.action.invocation.metavar": _S(color="cyan", bold=True),
+        "help.action.invocation.metavar": _S(color="red", bold=True),
+        "help.header.text": _S(color="red", bold=True),
+        "help.header.rule": _S(color="#272822"),
         "prog": _S(bgcolor="cyan", color="white", bold=True),
     }
 )

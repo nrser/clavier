@@ -3,6 +3,9 @@ from argparse import SUPPRESS
 from typing import TYPE_CHECKING, Callable
 
 from rich.console import Group, RenderableType as _RT
+from rich.rule import Rule
+from rich.text import Text
+from rich.style import Style as _S
 
 from clavier import io
 
@@ -53,7 +56,7 @@ class RichSectionFormatter:
         if self.parent is None:
             return Group(*items)
 
-        if self.formatter.short or self.title is None or self.title == "":
+        if self.title is None or self.title == "":
             return Group(*items, io.NEWLINE)
         else:
             return Group(

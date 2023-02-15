@@ -18,10 +18,7 @@
 ##############################################################################
 
 from __future__ import annotations
-from dataclasses import dataclass
-from functools import cached_property
 import re as _re
-import shutil
 from argparse import (
     SUPPRESS,
     OPTIONAL,
@@ -39,7 +36,6 @@ from typing import (
     Callable,
     Generator,
     Iterable,
-    NamedTuple,
     ParamSpec,
     TypeVar,
     cast,
@@ -54,11 +50,10 @@ from rich.markdown import Markdown
 from rich.table import Table
 from rich.padding import Padding
 from rich.highlighter import RegexHighlighter
-from rich.panel import Panel
 from rich.rule import Rule
 from rich.style import Style as _S
 
-from clavier import io, err, cfg, txt
+from clavier import io, err, cfg
 from .rich_action_formatter import RichActionFormatter
 from .rich_section_formatter import RichSectionFormatter
 
@@ -76,6 +71,8 @@ class InvocationHighLighter(RegexHighlighter):
     highlights = [
         r"(?P<flag>--[^\s=]+)(?:[\s=](?P<metavar>\w+))?",
         r"(?P<flag>-\w)(?:\s(?P<metavar>\w+))?",
+        r"\A(?P<metavar>\w+)",
+        r"\s(?P<metavar>\w+)",
     ]
 
 
@@ -237,48 +234,22 @@ class RichHelpFormatter(HelpFormatter):
             Text(
                 self._prog,
                 justify="center",
-                style=_S(
-                    color="red",
-                    # bgcolor="#272822",
-                    bold=True,
-                ),
+                style="help.header.text",
             ),
-            Rule(
-                # characters="=",
-                style=_S(
-                    # color="black",
-                    # bgcolor="#272822",
-                    color="#272822"
-                ),
-            ),
+            Rule(style="help.header.rule"),
         )
-
-    # Replaced by `_format_actions`
-    #
-    # def _format_action(self, action: Action) -> Group:
-    #     # determine the required width and the entry label
-    #     action_header = self._format_action_invocation(action)
-
-    #     # collect the pieces of the action help
-    #     parts: list[_RT] = [action_header]
-
-    #     # if there was help for the action, add lines of help text
-    #     if action.help:
-    #         help_text = self._expand_help(action)
-    #         parts.append(help_text)
-
-    #     # if there are any sub-actions, add their help as well
-    #     for subaction in self._iter_subactions(action):
-    #         parts.append(self._format_action(subaction))
-
-    #     # return a render group
-    #     return Group(*parts)
 
     def _format_action_invocation(self, action: Action) -> _RT:
         if not action.option_strings:
             default = self._get_default_metavar_for_positional(action)
             (metavar,) = self._metavar_formatter(action, default)(1)
-            return str(metavar)
+
+            if metavar is None:
+                return ""
+
+            text = Text(metavar)
+            InvocationHighLighter().highlight(text)
+            return text
 
         else:
             # items = io.Grouper()
@@ -338,7 +309,7 @@ class RichHelpFormatter(HelpFormatter):
     ) -> _RT:
         action_formatters = [
             self._ActionFormatter(
-                help_formatter=self,
+                formatter=self,
                 action=action,
                 depth=_depth,
             )
@@ -539,7 +510,9 @@ class RichHelpFormatter(HelpFormatter):
             usage = " ".join([s for s in [prog, action_usage] if s])
 
         # https://rich.readthedocs.io/en/latest/reference/syntax.html
-        return Syntax(usage, "bash", padding=(1, self._indent))
+        return Syntax(
+            usage, "bash", padding=(1 if self._short else 1, self._indent)
+        )
 
     def _format_text(self, text: str) -> _RT:
         text = dedent(text)
