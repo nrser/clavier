@@ -1,19 +1,15 @@
 from argparse import Namespace
 import asyncio
-from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 import signal
-from typing import Any, Callable, Mapping, Protocol, Sequence, TypeAlias
+from typing import Any, Callable, Mapping, Sequence
 import sys
-from inspect import getdoc, signature, unwrap
+import readline
+import shlex
+import threading
 
-import splatlog
 from rich.console import Console
-from rich.panel import Panel
-from rich.style import Style
-from rich.padding import Padding
 
 from clavier import arg_par, io, err, sesh, cfg, txt, req
 
@@ -42,7 +38,6 @@ class AsyncEmbeddedConsole(sesh.Sesh):
     _out: Console
     _parser: arg_par.ArgumentParser
     _done: bool = False
-    _args: Namespace | None = None
 
     def __init__(
         self,
@@ -52,7 +47,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
         prog_name: str | None = None,
         file: FileDescriptorLike = sys.stdin,
         signal_handlers: Mapping[int, Callable[[], object] | str] = {
-            signal.SIGINT: "cancel"
+            signal.SIGINT: "cancel",
         },
     ):
         super().__init__(
@@ -88,17 +83,22 @@ class AsyncEmbeddedConsole(sesh.Sesh):
                 t.cancel()
 
     def _read_input(self) -> None:
-        self._log.debug("Reading input...")
+        try:
+            self._log.debug("Reading input...")
 
-        input = sys.stdin.readline()
-        self._log.debug("Read input, putting in queue...", input=repr(input))
+            line = input()
+            self._log.debug("Read input, putting in queue...", input=repr(line))
 
-        self._read_task = asyncio.ensure_future(self._queue.put(input))
+            self._read_task = asyncio.ensure_future(self._queue.put(line))
 
-        self._log.debug("Done reading input.", read_task=self._read_task)
+            self._log.debug("Done reading input.", read_task=self._read_task)
+        except EOFError:
+            self.cancel()
 
     async def loop(self):
         self._log.debug("Setting up loop...")
+
+        prompt = f"{self._parser.prog} $ "
 
         ev = asyncio.get_event_loop()
 
@@ -110,15 +110,16 @@ class AsyncEmbeddedConsole(sesh.Sesh):
         try:
             self._log.debug("Entering loop...")
 
-            while not self._done:
-                self._out.print("Input command (enter `help` for help):")
+            self._out.print("Input command (enter `help` for help):")
 
+            while not self._done:
+                self._out.print(prompt, end="")
                 self._log.debug("Executing queue.get...")
                 self._dequeue_task = asyncio.ensure_future(self._queue.get())
 
                 self._log.debug("Awaiting queue.get...")
                 input = await self._dequeue_task
-                argv = tuple(input.strip().split())
+                argv = shlex.split(input.strip())
 
                 self._log.debug(
                     "Got input from queue", input=repr(input), argv=argv
@@ -127,7 +128,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
                 if argv:
                     await self.run(argv, event_loop=ev)
 
-        except (asyncio.CancelledError, KeyboardInterrupt):
+        except (asyncio.CancelledError, KeyboardInterrupt, EOFError):
             self._done = True
             self._log.debug("Interupted, exiting...", exc_info=sys.exc_info())
 
@@ -170,7 +171,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
 
         return self._run_future
 
-    def _create_run_task(self, argv: list[str]) -> None:
+    def _create_run_task(self, argv: Sequence[str]) -> None:
         self._run_handle = None
 
         if self._run_task is not None:
@@ -205,7 +206,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
 
         self._run_future = None
 
-    async def _execute_async(self, argv: list[str]) -> int:
+    async def _execute_async(self, argv: Sequence[str]) -> int:
         try:
             request = self._parse(argv)
             return await self._handle_async(request)
