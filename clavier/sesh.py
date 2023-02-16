@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 import asyncio
+from dataclasses import dataclass, field
 from inspect import unwrap
+from types import MappingProxyType
 from typing import (
     Any,
     Callable,
     Dict,
     Generic,
+    Mapping,
     NamedTuple,
     NoReturn,
     ParamSpec,
@@ -24,11 +27,13 @@ import signal
 
 import splatlog
 from rich.console import Console
+from rich.repr import RichReprResult
 
 from . import err, io, cfg, etc, txt
 from .arg_par import ArgumentParser
 from .arg_par.argument_parser import TARGET_NAME, Setting, Target, check_target
 
+from .req import Req
 
 _LOG = splatlog.get_logger(__name__)
 
@@ -49,28 +54,6 @@ error_context = etc.ctx.ContextVarManager(
 )
 
 
-# NOTE  This took very little to write, and works for the moment, but it relies
-#       on a bunch of sketch things (beyond being hard to read and understand
-#       quickly):
-#
-#       1.  All values that are callable are considered default getters.
-#
-#       2.  The order that the arguments were added to the `ArgumentParser`
-#           is the order we end up iterating in here.
-#
-#           Otherwise there's no definition of the iter-dependency chains.
-#
-#       3.  Hope nothing else messes with the `values` reference while we're
-#           mutating it.
-#
-def _resolve_default_getters(values: Dict[str, Any]) -> None:
-    for key in values:
-        if callable(values[key]):
-            values[key] = values[key](
-                **{k: v for k, v in values.items() if not callable(v)}
-            )
-
-
 class Sesh:
     """
     A CLI app session
@@ -87,7 +70,7 @@ class Sesh:
     def __init__(
         self: Sesh,
         pkg_name: str,
-        description: Union[str, Path],
+        description: str | Path,
         cmds: Any,
         parser: ArgumentParser | None = None,
         prog_name: str | None = None,
@@ -97,10 +80,10 @@ class Sesh:
         self._pkg_name = pkg_name
         self.description = description
         self._init_cmds = cmds
-        self._context = cfg.current.create_derived_context()
+        self._context = cfg.current.create_derived_context(name="session")
 
         if setup_logging:
-            self.setup()
+            self.setup_logging()
 
         if parser is None:
             self._parser = ArgumentParser.create(
@@ -135,10 +118,9 @@ class Sesh:
     def parser(self) -> ArgumentParser:
         return self._parser
 
-    @property
-    def target(self) -> Target:
+    def get_target(self, args: argparse.Namespace) -> Target:
         try:
-            return check_target(getattr(self.args, TARGET_NAME))
+            return check_target(getattr(args, TARGET_NAME))
         except err.InternalError:
             raise
         except Exception as error:
@@ -191,10 +173,8 @@ class Sesh:
         key = self.get_app_setting_key(name, Any)
         return etc.iter.find(lambda s: s.key == key, self.get_parser_settings())
 
-    def setup(
-        self,
-        verbosity: None | splatlog.Verbosity = None,
-        prog: str | None = None,
+    def setup_logging(
+        self, verbosity: None | splatlog.Verbosity = None
     ) -> Sesh:
         """This has really become "setup logging"."""
         if verbosity is None:
@@ -228,51 +208,42 @@ class Sesh:
     def parse(
         self,
         argv: Sequence[str] | None = None,
-    ) -> Sesh:
+    ) -> Req:
         return self._context.run(self._parse, argv)
 
     def _parse(
         self,
         argv: Sequence[str] | None = None,
-    ) -> Sesh:
+    ) -> Req:
+        _argv = sys.argv[1:] if argv is None else argv
+
         with error_context("parsing arguments"):
-            self._args = self.parser.parse_args(argv)
+            args = self.parser.parse_args(_argv)
+
+        with error_context("constructing request"):
+            request = Req(
+                argv=tuple(_argv),
+                args=args,
+            )
 
         splatlog.set_verbosity(
             self.get_setting("verbosity", splatlog.Verbosity)
         )
 
-        self._log.debug("Parsed arguments", **self._args.__dict__)
-        return self
+        self._log.debug("Parsed arguments", request=request)
+        return request
 
-    def run(self) -> int:
-        return self._context.run(self._run)
+    def handle(self, request: Req) -> int:
+        return self._context.run(self._handle, request)
 
-    def _run(self) -> int:
-        target = self.target
-
-        # Form the call keyword args -- start with a dict of the parsed arguments
-
-        # Omit the global argument names and target
-        # omit_keys = set(self.parser.action_dests())
-        # omit_keys.add(TARGET_NAME)
-
-        # kwds = {
-        #     k: v for k, v in self.args.__dict__.items() if k not in omit_keys
-        # }
-
-        kwds = {k: v for k, v in self.args.__dict__.items() if k != TARGET_NAME}
-
-        # Resolve default getters
-        _resolve_default_getters(kwds)
-
+    def _handle(self, request: Req) -> int:
         with error_context(
-            f"executing {txt.fmt(target)}", expect_system_exit=True
+            f"executing {txt.fmt(request.target)}", expect_system_exit=True
         ):
-            if asyncio.iscoroutinefunction(unwrap(target)):
-                result = asyncio.run(target(**kwds))
+            if request.is_async:
+                result = asyncio.run(request.target(**request.kwds))
             else:
-                result = target(**kwds)
+                result = request.target(**request.kwds)
 
         view = result if isinstance(result, io.View) else io.View(result)
 
@@ -383,25 +354,16 @@ class Sesh:
                     )
                 )
 
-    # F'ing doc generator can't cope with anything named 'exec' due to using
-    # `lib2to3` to parse (`exec` was a keyword in Python 2):
-    #
-    # https://bugs.python.org/issue44259
-    #
-    def execute(self):
-        sys.exit(self.run())
+    def execute(self, argv: Sequence[str] | None = None) -> int:
+        return self._context.run(self._execute, argv)
 
-    def takeover(self, argv: Sequence[str] | None = None) -> NoReturn:
-        sys.exit(self._context.run(self._takeover, argv))
-
-    def _takeover(self, argv: Sequence[str] | None = None) -> int:
-        exit_status: int = 0
+    def _execute(self, argv: Sequence[str] | None = None) -> int:
         try:
-            self._parse(argv)
-
-            exit_status = self._run()
+            req = self._parse(argv)
+            return self._handle(req)
 
         except BaseException as error:
-            exit_status = self.handle_error(error)
+            return self.handle_error(error)
 
-        return exit_status
+    def takeover(self, argv: Sequence[str] | None = None) -> NoReturn:
+        sys.exit(self._context.run(self._execute, argv))

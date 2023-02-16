@@ -82,5 +82,6 @@ class Container(MutableConfig):
         return self.configure(Key(package).root, **meta)
 
     def __rich_repr__(self) -> RichReprResult:
+        yield "meta", self._meta
         yield "parent", self._parent
         yield "updates", self._updates

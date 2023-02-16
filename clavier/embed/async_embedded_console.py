@@ -2,8 +2,10 @@ from argparse import Namespace
 import asyncio
 from collections import defaultdict
 from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 import signal
-from typing import Any, Callable, Mapping, Protocol, TypeAlias
+from typing import Any, Callable, Mapping, Protocol, Sequence, TypeAlias
 import sys
 from inspect import getdoc, signature, unwrap
 
@@ -13,39 +15,28 @@ from rich.panel import Panel
 from rich.style import Style
 from rich.padding import Padding
 
-from clavier import arg_par, io, err
+from clavier import arg_par, io, err, sesh, cfg, txt, req
 
 from .embed_typings import FileDescriptorLike
 
-
-# NOTE  This took very little to write, and works for the moment, but it relies
-#       on a bunch of sketch things (beyond being hard to read and understand
-#       quickly):
-#
-#       1.  All values that are callable are considered default getters.
-#
-#       2.  The order that the arguments were added to the `ArgumentParser`
-#           is the order we end up iterating in here.
-#
-#           Otherwise there's no definition of the iter-dependency chains.
-#
-#       3.  Hope nothing else messes with the `values` reference while we're
-#           mutating it.
-#
-def _resolve_default_getters(values: dict[str, Any]) -> None:
-    for key in values:
-        if callable(values[key]):
-            values[key] = values[key](
-                **{k: v for k, v in values.items() if not callable(v)}
-            )
+RunTask = asyncio.Task[int]
+RunFuture = asyncio.Future[int]
 
 
-class AsyncEmbeddedConsole:
-    _log = splatlog.LoggerProperty()
+# @dataclass(frozen=True)
+# class Run:
+#     future: RunFuture
+#     task: RunTask
+#     handle: asyncio.Handle
 
+
+class AsyncEmbeddedConsole(sesh.Sesh):
     _queue: asyncio.Queue[str]
     _read_task: asyncio.Task | None = None
     _dequeue_task: asyncio.Task | None = None
+    _run_task: RunTask | None = None
+    _run_future: RunFuture | None = None
+    _run_handle: asyncio.Handle | None = None
     _file: FileDescriptorLike
     _signal_handlers: dict[int, Callable[[], object]]
     _out: Console
@@ -55,29 +46,44 @@ class AsyncEmbeddedConsole:
 
     def __init__(
         self,
-        parser: arg_par.ArgumentParser,
+        pkg_name: str,
+        description: str | Path,
+        cmds: Any,
+        prog_name: str | None = None,
         file: FileDescriptorLike = sys.stdin,
         signal_handlers: Mapping[int, Callable[[], object] | str] = {
             signal.SIGINT: "cancel"
         },
     ):
+        super().__init__(
+            pkg_name=pkg_name,
+            description=description,
+            cmds=cmds,
+            prog_name=prog_name,
+            autocomplete=False,
+            setup_logging=False,
+        )
+
         self._queue = asyncio.Queue()
 
-        self._parser = parser
         self._file = file
         self._signal_handlers = {
             n: getattr(self, h) if isinstance(h, str) else h
             for n, h in signal_handlers.items()
         }
 
-        # TODO  Parameterize this!
-        self._out = Console(file=sys.stdout, theme=io.THEME)
+        # TODO  Parameterize this?
+        self._out = io.OUT
+        self._tasks = set()
 
     def cancel(self) -> None:
         self._log.debug("Cancelling...")
         self._done = True
 
-        for t in (self._dequeue_task, self._read_task):
+        if handle := self._run_handle:
+            handle.cancel()
+
+        for t in (self._dequeue_task, self._read_task, self._run_task):
             if t is not None and (not t.done()):
                 t.cancel()
 
@@ -112,13 +118,14 @@ class AsyncEmbeddedConsole:
 
                 self._log.debug("Awaiting queue.get...")
                 input = await self._dequeue_task
-                argv = input.strip().split()
+                argv = tuple(input.strip().split())
 
                 self._log.debug(
                     "Got input from queue", input=repr(input), argv=argv
                 )
 
-                await self.run(argv)
+                if argv:
+                    await self.run(argv, event_loop=ev)
 
         except (asyncio.CancelledError, KeyboardInterrupt):
             self._done = True
@@ -130,145 +137,91 @@ class AsyncEmbeddedConsole:
 
             ev.remove_reader(self._file)
 
-    # The `Sesh`` stuff
-    # ========================================================================
-    #
-    # Things that overlap with `Sesh`, and ideally would be consolidated largely
-    # or completely.
-    #
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        event_loop: asyncio.AbstractEventLoop | None = None,
+    ) -> asyncio.Future[int]:
+        # Get the event loop if one wasn't provided
+        ev = asyncio.get_event_loop() if event_loop is None else event_loop
 
-    def is_backtracing(self) -> bool:
-        if self._args is None:
-            return False
-        return getattr(self._args, "backtrace", False)
-
-    async def run(self, argv: list[str]) -> None:
-        try:
-            await self._run_internal(argv)
-
-        except (asyncio.CancelledError, KeyboardInterrupt) as error:
-            # Bubble this up so the process can exit
-            #
-            self._log.debug("Interupted, re-raising", error=error)
-            raise
-
-        except err.ParserExit as error:
-            self._handle_parser_exit(error)
-
-        except SystemExit as error:
-            level = splatlog.DEBUG if error.code == 0 else splatlog.ERROR
-
-            self._log.log(
-                level,
-                "System exit during arg parsing !!!",
-                parsed_args=self._args,
-                code=error.code,
-                exc_info=True,
+        if self._run_future is not None:
+            raise err.InternalError(
+                "{}._run_future is already set".format(txt.fmt_type_of(self))
             )
 
-        except err.InternalError as error:
-            # Internal error (in code / logic) are always printed,
-            # regardless of backtrace setting. It's a developer tool afterall,
-            # and someone needs to fix it.
-            #
-            self._log.exception("`run` encountered an internal error")
+        # Create a future that will be fulfilled with the exit status. We do
+        # this because we want to execute the target in a new derived context,
+        # which is possible via `asyncio.AbstractEventLoop.call_soon`, so we
+        # will set a result on the future on the other side of that.
+        self._run_future = ev.create_future()
 
-        except Exception as error:
-            # Catch-all
-            #
-            if self.is_backtracing():
-                self._log.error(
-                    "[holup]Terminting due to view rendering error[/holup]...",
-                    exc_info=True,
+        # Derive a context to execute the request in. We are already in the
+        # context of the top-level `sesh.Sesh`, so this will copy that context.
+        context = cfg.current.create_derived_context(
+            src=txt.fmt(self.run),
+            argv=tuple(argv),
+        )
+
+        self._run_handle = ev.call_soon(
+            self._create_run_task, argv, context=context
+        )
+
+        return self._run_future
+
+    def _create_run_task(self, argv: list[str]) -> None:
+        self._run_handle = None
+
+        if self._run_task is not None:
+            raise err.InternalError(
+                f"already a run task running: {self._run_task!r}"
+            )
+
+        self._run_task = asyncio.create_task(self._execute_async(argv))
+        self._run_task.add_done_callback(self._run_task_done)
+
+    def _run_task_done(self, task: RunTask) -> None:
+        if self._run_task is not task:
+            raise err.InternalError(
+                "`task` argument is not `{}._run_task`".format(
+                    txt.fmt_type_of(self)
                 )
+            )
+
+        self._run_task = None
+
+        if self._run_future is None:
+            raise err.InternalError(
+                "no `()._run_future` to respond to".format(
+                    txt.fmt_type_of(self)
+                )
+            )
+
+        try:
+            self._run_future.set_result(task.result())
+        except BaseException as error:
+            self._run_future.set_exception(error)
+
+        self._run_future = None
+
+    async def _execute_async(self, argv: list[str]) -> int:
+        try:
+            request = self._parse(argv)
+            return await self._handle_async(request)
+
+        except BaseException as error:
+            return self.handle_error(error)
+
+    async def _handle_async(self, request: req.Req) -> int:
+        with sesh.error_context(
+            f"executing {txt.fmt(request.target)}", expect_system_exit=True
+        ):
+            if request.is_async:
+                result = await request.target(**request.kwds)
             else:
-                self._log.error(
-                    "Command [uhoh]FAILED[/uhoh].\n\n"
-                    f"{type(error).__name__}: {error}\n\n"
-                    "Add `--backtrace` to print stack.",
-                )
+                result = request.target(**request.kwds)
 
-        self._args = None
+        view = result if isinstance(result, io.View) else io.View(result)
 
-    def _handle_parser_exit(self, error: err.ParserExit) -> None:
-        # NOTE  Single call site at this time (2023-02-04); factored-out into
-        #       a separate method to make caller (`run``) easier to read.
-        #
-        self._log.debug(
-            "Handling `ParserExit`...",
-            status=error.status,
-            message=error.message,
-        )
-
-        if error.status == 0:
-            if message := error.message:
-                io.OUT.print(message)
-            return
-
-        is_bt = self.is_backtracing()
-
-        if is_bt:
-            self._log.exception(
-                "Failed to parse arguments",
-                status=error.status,
-                message=error.message,
-            )
-
-        message = "(no message)" if (not error.message) else error.message
-
-        io.ERR.print("Failed to parse arguments", style=Style(italic=True))
-        io.ERR.print(
-            Padding(
-                Panel(
-                    message,
-                    title="ERROR",
-                    border_style=Style(color="red"),
-                    padding=(1, 2),
-                ),
-                (1, 0),
-            )
-        )
-
-        if not is_bt:
-            io.ERR.print(
-                "Enabled backtrace logging with `--backtrace` flag",
-                style=Style(italic=True),
-            )
-
-    async def _run_internal(self, argv: list[str]) -> None:
-        if not argv:
-            # Ignore empty lines (user spamming return key)
-            return
-
-        args = self._parser.parse_args(argv)
-
-        # Set here and unset in surrounding `run` so that the exception handlers
-        # there have access to it.
-        self._args = args
-
-        # Form the call keyword args -- start with a dict of the parsed arguments
-        kwds = {**args.__dict__}
-
-        # Remove the global argument names
-        for key in self._parser.action_dests():
-            if key in kwds:
-                del kwds[key]
-
-        # And the `__target__` that holds the target function
-        try:
-            target = kwds.pop("__target__")
-        except KeyError:
-            raise err.InternalError("Missing __target__ arg")
-
-        # Resolve default getters
-        _resolve_default_getters(kwds)
-
-        if asyncio.iscoroutinefunction(unwrap(target)):
-            result = await target(**kwds)
-        else:
-            result = target(**kwds)
-
-        if not isinstance(result, io.View):
-            result = io.View(result)
-
-        result.render(args.output)
+        return self._render_view(view)

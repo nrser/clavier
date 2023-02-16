@@ -29,7 +29,13 @@ def as_cmd(fn: Callable[TParams, TReturn]) -> CmdFn[TParams, TReturn]:
 
         for p in signature(fn).parameters.values():
             args: list[str] = []
-            kwds: dict[str, Any] = {"type": p.annotation}
+            kwds: dict[str, Any] = {}
+
+            if p.annotation is bool:
+                kwds["action"] = "store_true"
+            else:
+                kwds["type"] = p.annotation
+
             match p.kind:
                 case p.POSITIONAL_ONLY | p.POSITIONAL_OR_KEYWORD:
                     args.append(p.name)
