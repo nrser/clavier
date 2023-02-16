@@ -222,7 +222,7 @@ class RequestHandler(BaseRequestHandler):
                 )
 
         self._log.debug(f"Starting CLI...")
-        sesh.execute()
+        self._exit_status = sesh.execute()
 
     def handle(self) -> None:
         t_start_ns = monotonic_ns()
@@ -259,10 +259,13 @@ class RequestHandler(BaseRequestHandler):
             except:
                 self._log.exception("Failed to un-set stdio!")
 
+            exit_status_bytes = INT_STRUCT.pack(self._exit_status)
             self._log.debug(
-                f"Sending exit status...", exit_status=self._exit_status
+                f"Sending exit status...",
+                exit_status=self._exit_status,
+                exit_status_bytes=exit_status_bytes,
             )
-            self.request.socket.send(INT_STRUCT.pack(self._exit_status))
+            self.request.socket.send(exit_status_bytes)
 
             t_end_ns = monotonic_ns()
             handle_ms = (t_end_ns - t_start_ns) // MS_TO_NS
