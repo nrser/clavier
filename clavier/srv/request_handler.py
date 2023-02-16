@@ -87,9 +87,12 @@ class RequestHandler(BaseRequestHandler):
             except socket.timeout:
                 pass
             else:
-                signal_number = INT_STRUCT.unpack(data)[0]
-                self._log.info("Raising signal", signal_number=signal_number)
-                signal.raise_signal(signal_number)
+                if len(data) == INT_STRUCT.size:
+                    signal_number = INT_STRUCT.unpack(data)[0]
+                    self._log.info(
+                        "Raising signal", signal_number=signal_number
+                    )
+                    signal.raise_signal(signal_number)
 
     def _try_parse_with_pickle(
         self,
@@ -219,7 +222,7 @@ class RequestHandler(BaseRequestHandler):
                 )
 
         self._log.debug(f"Starting CLI...")
-        sesh.parse().execute()
+        sesh.execute()
 
     def handle(self) -> None:
         t_start_ns = monotonic_ns()
