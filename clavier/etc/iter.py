@@ -17,6 +17,8 @@ from typing import (
     List,
 )
 
+from more_itertools import intersperse
+
 from .type import Null, is_null
 
 K = TypeVar("K")
@@ -66,6 +68,7 @@ def find(predicate, itr, not_found=None):
     If `predicate` returns `False` or `None` for **all** items in `itr` then
     `not_found` is returned, which defaults to `None`.
 
+    >>> from pathlib import Path
     >>> find(lambda p: Path(p).exists(), ('./a/b', './c/d'), '/dev/null')
     '/dev/null'
 
@@ -144,30 +147,14 @@ def find(predicate, itr, not_found=None):
 #     return not_found
 
 
-def intersperse(
-    iterable: Iterable[TItem], separator: V
-) -> Generator[Union[TItem, V], None, None]:
-    """\
-    Like a "join", but general.
-
-    >>> list(intersperse([1, 2, 3], 'and'))
-    [1, 'and', 2, 'and', 3]
-    """
-    iterator = iter(iterable)
-    yield next(iterator)
-    for item in iterator:
-        yield separator
-        yield item
-
-
 def interspersed(
-    iterable: Iterable[TItem], separator: V
+    separator: V, iterable: Iterable[TItem]
 ) -> List[Union[TItem, V]]:
     """\
     Just `intersperse`, but converts the result to a `list` for you (instead
     of a generator).
 
-    >>> list(intersperse([1, 2, 3], 'and'))
+    >>> list(intersperse('and', [1, 2, 3]))
     [1, 'and', 2, 'and', 3]
     """
-    return list(intersperse(iterable, separator))
+    return list(intersperse(separator, iterable))

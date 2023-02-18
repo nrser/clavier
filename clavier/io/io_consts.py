@@ -45,7 +45,7 @@ THEME = Theme(
         # ====================================================================
         "path.part": _S(color="green"),
         "path.sep": _S(color="magenta"),
-        "path.cont": _S(color="white", dim=True),
+        "path.cont": _S(color="cyan"),
     }
 )
 
@@ -53,4 +53,4 @@ OUT = Console(theme=THEME, file=sys.stdout)
 ERR = Console(theme=THEME, file=sys.stderr)
 
 EMPTY = Group()
-NEWLINE = Text("\n", end="")
+NEWLINE = Text("", end="\n")

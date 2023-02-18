@@ -1,7 +1,8 @@
 import argparse
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from inspect import getdoc, isclass, signature
+import re
 from types import NoneType, UnionType
 from typing import (
     Any,
@@ -15,10 +16,11 @@ from typing import (
     get_args,
     get_origin,
 )
+from more_itertools import only
 
 from rich.repr import RichReprResult
 
-from clavier import arg_par, txt
+from clavier import arg_par, txt, etc
 
 TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
@@ -40,11 +42,7 @@ class CmdFn(Protocol[TParams, TReturn_co]):
         ...
 
 
-ParserArgumentType = Callable[[str], Any] | argparse.FileType | None
-
-
-def is_union(annotation: Any) -> bool:
-    return isinstance(annotation, UnionType) or get_origin(annotation) is Union
+ActionType = Callable[[str], Any] | argparse.FileType | None
 
 
 @dataclass(frozen=True)
@@ -68,7 +66,11 @@ class ActionUnionType:
         yield self.union
 
 
-def as_action_type(annotation: Any) -> ParserArgumentType:
+def is_union(annotation: Any) -> bool:
+    return isinstance(annotation, UnionType) or get_origin(annotation) is Union
+
+
+def as_action_type(annotation: Any) -> ActionType:
     match annotation:
         case None:
             return None
@@ -79,12 +81,97 @@ def as_action_type(annotation: Any) -> ParserArgumentType:
     raise ValueError(f"not sure how to turn into action type: {annotation!r}")
 
 
+NAME_RE = re.compile(r"(?P<lead>[\-\*]\s+)\`?(?P<name>\w+)\`?(?:\s+[\-—]\s+)")
+
+TDocstring = TypeVar("TDocstring", bound="Docstring")
+
+
+@dataclass(frozen=True)
+class Docstring:
+    @classmethod
+    def of(cls: type[TDocstring], obj: object) -> TDocstring | None:
+        if src := getdoc(obj):
+            return cls(src=src)
+
+    src: str
+    src_lines: tuple[str, ...] = field(init=False)
+    cuts: list[range] = field(init=False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "src_lines", tuple(self.src.splitlines()))
+        object.__setattr__(self, "cuts", [])
+
+    def cut(self, node: etc.md.Node) -> list[str] | None:
+        if node_map := node.map:
+            start, stop = node_map
+            rng = range(start, stop)
+            self.cuts.append(rng)
+            return list(self.src_lines[start:stop])
+
+    def iter_lines(self):
+        for i, line in enumerate(self.src_lines):
+            if not any(i in rng for rng in self.cuts):
+                yield line
+
+    def __str__(self) -> str:
+        return "".join(self.iter_lines())
+
+
+def parse_docstring(obj: object) -> tuple[str | None, dict[str, str]]:
+    if ds := Docstring.of(obj):
+
+        root = etc.md.as_tree(ds.src)
+        sections = etc.md.as_sections(root)
+
+        if (
+            (
+                params_section := only(
+                    s
+                    for s in sections
+                    if s.title and s.title.lower() == "parameters"
+                )
+            )
+            and (
+                params_list := only(
+                    n for n in params_section.body if n.type == "bullet_list"
+                )
+            )
+            and (heading_node := params_section.heading)
+        ):
+            ds.cut(heading_node)
+            for node in params_section.body:
+                ds.cut(node)
+
+            items = {}
+
+            for list_item in params_list.children:
+                if (item_lines := ds.cut(list_item)) and (
+                    m := NAME_RE.match(item_lines[0])
+                ):
+                    lead_len = len(m.group("lead"))
+                    rm_lead_re = re.compile(r"^[\-\s]{" + str(lead_len) + r"}")
+                    new_lines = []
+                    for i, line in enumerate(item_lines):
+                        if i == 0:
+                            new_lines.append(line[m.end() :])
+                        else:
+                            new_lines.append(rm_lead_re.sub("", line))
+
+                    items[m.group("name")] = "\n".join(new_lines)
+
+            return str(ds), items
+
+    return None, {}
+
+
 def as_cmd(fn: Callable[TParams, TReturn]) -> CmdFn[TParams, TReturn]:
     def add_parser(subparsers: arg_par.Subparsers) -> None:
+        help, params_help = parse_docstring(fn)
+
         parser = subparsers.add_parser(
             fn.__name__,
             target=fn,
-            help=getdoc(fn),
+            help=help,
         )
 
         params = signature(fn).parameters.values()
@@ -99,6 +186,8 @@ def as_cmd(fn: Callable[TParams, TReturn]) -> CmdFn[TParams, TReturn]:
         for p in signature(fn).parameters.values():
             args: list[str] = []
             kwds: dict[str, Any] = {}
+
+            kwds["help"] = params_help.get(p.name)
 
             if p.annotation is bool:
                 kwds["action"] = "store_true"
@@ -125,3 +214,11 @@ def as_cmd(fn: Callable[TParams, TReturn]) -> CmdFn[TParams, TReturn]:
     setattr(fn, "add_parser", add_parser)
 
     return cast(CmdFn[TParams, TReturn], fn)
+
+
+if __name__ == "__main__":
+    from rich import print as p
+
+    from clavier.srv.entrypoint import build
+
+    p(parse_docstring(build))

@@ -2,7 +2,8 @@ from argparse import Action, SUPPRESS
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator, NamedTuple
+from typing import TYPE_CHECKING, Generator, Mapping, NamedTuple, Sequence
+from clavier.etc.iter import intersperse
 
 from splatlog.lib.rich import enrich
 
@@ -53,28 +54,53 @@ class RichActionFormatter:
                 return Text(s, "help.action.str_value")
             case Path() as path:
                 return EnrichedPath(path)
-            case tuple() | list():
-                table = Table(
-                    padding=(0, 2, 0, 0),
-                    # show_header=False,
-                    title=f"{value.__class__.__name__}[{len(value)}]",
-                    box=None,
-                )
-                table.add_column()
-                table.add_column()
-                for i, e in enumerate(value):
-                    table.add_row(f"[{i}]", self.format_value(e))
-                return table
+            # case tuple() | list():
+            #     table = Table(
+            #         padding=(0, 2, 0, 0),
+            #         # show_header=False,
+            #         title=f"{value.__class__.__name__}[{len(value)}]",
+            #         box=None,
+            #     )
+            #     table.add_column()
+            #     table.add_column()
+            #     for i, e in enumerate(value):
+            #         table.add_row(f"[{i}]", self.format_value(e))
+            #     return table
             case other:
                 return Pretty(other)
 
-    @cached_property
-    def default_row(self) -> _InfoTableRow | None:
+    def default_rows(self) -> Generator[_InfoTableRow, None, None]:
         if (default := self.action.default) and default != SUPPRESS:
-            return _InfoTableRow(
-                Text("default", "help.action.info.name"),
-                self.format_value(default),
-            )
+            name = Text("default", "help.action.info.name")
+            match default:
+                case map if isinstance(map, Mapping):
+                    yield _InfoTableRow(name, io.EMPTY)
+                    for k, v in map.items():
+                        yield _InfoTableRow(
+                            Text(
+                                f"[{k}]",
+                                "help.action.info.name",
+                                justify="right",
+                            ),
+                            self.format_value(v),
+                        )
+
+                case seq if isinstance(seq, Sequence) and not isinstance(
+                    seq, (str, bytes)
+                ):
+                    yield _InfoTableRow(name, io.EMPTY)
+                    for i, v in enumerate(seq):
+                        yield _InfoTableRow(
+                            Text(
+                                f"[{i}]",
+                                "help.action.info.name",
+                                justify="right",
+                            ),
+                            self.format_value(v),
+                        )
+
+                case other:
+                    yield _InfoTableRow(name, self.format_value(other))
 
     @cached_property
     def choices_row(self) -> _InfoTableRow | None:
@@ -88,15 +114,19 @@ class RichActionFormatter:
             )
 
     def info_table_rows(self) -> Generator[_InfoTableRow, None, None]:
+        if typ := self.type:
+            yield _InfoTableRow(Text("type", "help.action.info.name"), typ)
+
         if choices_row := self.choices_row:
             yield choices_row
 
-        if default_row := self.default_row:
-            yield default_row
+        yield from self.default_rows()
 
     @cached_property
     def info_table(self) -> _RT | None:
-        if rows := list(self.info_table_rows()):
+        if (not self.formatter.short) and (
+            rows := list(self.info_table_rows())
+        ):
             table = Table(
                 padding=(0, self.formatter.indent, 0, 0),
                 show_header=False,
@@ -104,12 +134,12 @@ class RichActionFormatter:
                 # expand=True,
             )
 
-            table.add_column()  # ratio=2)
+            table.add_column()  # justify="right")  # ratio=2)
             table.add_column()  # ratio=10)
 
             for index, row in enumerate(rows):
-                if index != 0:
-                    table.add_row(io.EMPTY, io.EMPTY)
+                # if index != 0:
+                #     table.add_row(io.EMPTY, io.EMPTY)
                 table.add_row(*row)
 
             return table
@@ -130,20 +160,22 @@ class RichActionFormatter:
 
     @cached_property
     def contents(self) -> _RT:
-        g = io.Grouper()
-
-        g.append(self.help)
-        # g.append(self.labels)
-        g.append(self.info_table)
-        g.append(self.subactions)
-
-        return g.to_group()
+        return (
+            io.Grouper(
+                [
+                    self.help,
+                    self.info_table,
+                    self.subactions,
+                ]
+            )
+            .join(io.NEWLINE)
+            .to_group()
+        )
 
     @cached_property
-    def type(self) -> _RT:
-        if self.action.type is None:
-            return io.EMPTY
-        return enrich(self.action.type)
+    def type(self) -> _RT | None:
+        if typ := self.action.type:
+            return enrich(self.action.type)
 
     def label(self, name: str, icon: str = "🏷 ") -> Text:
         # Tried with an icon, ended up just feeling too noisy

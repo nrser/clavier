@@ -154,6 +154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             running in _server mode_ (see `clavier.srv`)
         """,
         cmds=(create, build, install),
+        prog_name=__name__,
     )
 
     return sesh.execute(argv)

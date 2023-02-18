@@ -243,13 +243,22 @@ class RichHelpFormatter(HelpFormatter):
         # else:
         #     text = name
 
-        return Group(
-            Text(
+        # return Group(
+        #     Text(
+        #         text,
+        #         justify="center",
+        #         style="help.header.text",
+        #     ),
+        #     Rule(style="help.header.rule"),
+        # )
+
+        return Rule(
+            title=Text(
                 text,
                 justify="center",
                 style="help.header.text",
             ),
-            Rule(style="help.header.rule"),
+            style="help.header.rule",
         )
 
     def _format_action_invocation(self, action: Action) -> _RT:
@@ -351,7 +360,6 @@ class RichHelpFormatter(HelpFormatter):
             )
             table.add_column(width=inv_width + self._indent)
             table.add_column()
-            table.add_column()
 
             return table
 
@@ -360,7 +368,7 @@ class RichHelpFormatter(HelpFormatter):
 
         for index, af in enumerate(action_formatters):
             if index != 0:
-                table.add_row(io.EMPTY, io.EMPTY, io.EMPTY)
+                table.add_row(io.EMPTY, io.EMPTY)
 
             if af.invocation_measurement.maximum > inv_max_width:
                 grouper.append(
@@ -369,7 +377,7 @@ class RichHelpFormatter(HelpFormatter):
                 grouper.append(io.NEWLINE)
 
                 table = make_table()
-                table.add_row(af.labels, af.type, af.contents)
+                table.add_row(af.labels, af.contents)
 
                 grouper.append(table)
 
@@ -379,7 +387,6 @@ class RichHelpFormatter(HelpFormatter):
                         af.invocation,
                         af.labels,
                     ),
-                    af.type,
                     af.contents,
                 )
 

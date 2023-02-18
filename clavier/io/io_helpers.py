@@ -1,10 +1,11 @@
 from io import StringIO
-from typing import TypeGuard
+from typing import Generator, Iterable, TypeGuard, TypeVar
 from pathlib import Path
 from pathlib import Path
 from collections import UserList
 from typing import overload
 
+from more_itertools import intersperse
 from rich.console import (
     Console,
     Group,
@@ -20,7 +21,7 @@ from rich.padding import Padding, PaddingDimensions
 from rich.traceback import Traceback
 from rich.pretty import Pretty
 
-from clavier import etc, txt, cfg
+from clavier import txt, cfg
 
 from .io_consts import OUT, NEWLINE
 
@@ -173,9 +174,120 @@ def capture(*args, **kwds) -> str:
     return capture.get()
 
 
-class Grouper(UserList[RenderableType | None]):
-    def to_group(self):
-        return Group(*(e for e in self.data if e is not None))
+TGrouper = TypeVar("TGrouper", bound="Grouper")
 
-    def join(self, separator):
-        return self.__class__(etc.interspersed(self.data, separator))
+
+class Grouper(UserList[RenderableType | None]):
+    """Builder `rich.console.Group` instances with an object that acts like a
+    `list` (via `collections.UserList`).
+
+    Allows adding of `None` entries, which are filtered out when converted
+    `to_group`. Also see `renderables` and `compact`.
+    """
+
+    @overload
+    def __init__(self, iterable: Iterable[RenderableType | None], /):
+        ...
+
+    @overload
+    def __init__(self, *iterable: RenderableType | None):
+        ...
+
+    def __init__(self, *args):
+        iterable: Iterable[RenderableType | None] | None
+
+        match args:
+            case ():
+                iterable = None
+
+            case (arg_0,) if isinstance(arg_0, RenderableType):
+                iterable = args
+
+            case (arg_0,) if isinstance(arg_0, Iterable):
+                iterable = arg_0
+
+            case _:
+                iterable = args
+
+        super().__init__(iterable)
+
+    def to_group(self):
+        """Build a `rich.console.Group` and return it.
+
+        ##### Examples #####
+
+        ```python
+        >>> Grouper("hey", "ho").to_group()
+        <rich.console.Group object at ...>
+
+        ```
+        """
+        return Group(*(r for r in self.renderables()))
+
+    def renderables(self) -> Generator[RenderableType, None, None]:
+        """Yield each of the renderable entries (each entry that is not `None`).
+
+        ##### Examples #####
+
+        ```python
+        >>> list(Grouper(None, "hey", None, "ho").renderables())
+        ['hey', 'ho']
+
+        ```
+        """
+        for entry in self.data:
+            if entry is not None:
+                yield entry
+
+    def renderable_count(self) -> int:
+        """Count how many renderables are in the `Grouper` (how many entries
+        are not `None`).
+
+        ##### Examples #####
+
+        ```python
+        >>> Grouper("hey", None, "ho").renderable_count()
+        2
+
+        ```
+
+        """
+        return sum(1 for entry in self.data if entry is not None)
+
+    def __bool__(self) -> bool:
+        """The boolean-ness of `Grouper` depends on how many _renderables_ it
+        has in it (`None` entries are not counted towards "truthy-ness").
+
+        ##### Examples #####
+
+        ```python
+        >>> bool(Grouper())
+        False
+
+        >>> bool(Grouper(None, None, None))
+        False
+
+        >>> bool(Grouper(None, "hey", None))
+        True
+
+        ```
+        """
+        return any(entry is not None for entry in self.data)
+
+    def compact(self) -> None:
+        """**Mutate** the builder by removing all `None` entries."""
+        for index, entry in enumerate(self.data):
+            if entry is None:
+                self.data.pop(index)
+
+    def join(self: TGrouper, separator: RenderableType) -> TGrouper:
+        """
+        ##### Examples #####
+
+        ```python
+        >>> Grouper("a", None, "b", "c", None).join("and")
+        ['a', 'and', 'b', 'and', 'c']
+
+        ```
+        """
+        return self.__class__(intersperse(separator, self.renderables()))
