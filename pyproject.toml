@@ -12,7 +12,9 @@ classifiers = [
     "Operating System :: POSIX",
 ]
 include = [
-  "LICENSE"
+  "LICENSE",
+  "entrypoint/src",
+  "entrypoint/Cargo.toml",
 ]
 packages = [
   {include = "clavier"},
