@@ -12,9 +12,7 @@ import threading
 
 from rich.console import Console
 
-from clavier import arg_par, io, err, sesh, cfg, txt, req
-
-from .embed_typings import FileDescriptorLike
+from clavier import io, sesh, cfg, req, etc
 
 RunTask = asyncio.Task[int]
 RunFuture = asyncio.Future[int]
@@ -124,7 +122,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
         except (asyncio.CancelledError, KeyboardInterrupt, EOFError) as error:
             self._log.debug(
                 "Received interupt while waiting to be done",
-                error_type=txt.fmt_type_of(error),
+                error_type=etc.txt.fmt_type_of(error),
             )
             self.stop()
 
@@ -157,7 +155,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
         except (asyncio.CancelledError, KeyboardInterrupt, EOFError) as error:
             self._log.debug(
                 "Received interupt while reading input (in thread)",
-                error_type=txt.fmt_type_of(error),
+                error_type=etc.txt.fmt_type_of(error),
             )
             self._event_loop.call_soon_threadsafe(self.stop)
 
@@ -175,7 +173,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
         except (asyncio.CancelledError, KeyboardInterrupt, EOFError) as error:
             self._log.debug(
                 "Received interupt while handing input",
-                error_type=txt.fmt_type_of(error),
+                error_type=etc.txt.fmt_type_of(error),
             )
             self.stop()
 
@@ -192,7 +190,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
 
     async def _handle_async(self, request: req.Req) -> int:
         with sesh.error_context(
-            f"executing {txt.fmt(request.target)} (async)",
+            f"executing {etc.txt.fmt(request.target)} (async)",
             expect_system_exit=True,
         ):
             if request.is_async:

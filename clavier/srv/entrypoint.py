@@ -1,14 +1,14 @@
 import os
 from pathlib import Path
-from subprocess import run
 import sys
 import shutil
-from typing import Callable, Sequence
+from typing import Sequence
+from clavier.etc import txt
 import tomli
 
 from more_itertools import always_iterable
 
-from clavier import Sesh, cmd, sh, io, txt
+from clavier import Sesh, cmd, sh, io, cfg, etc, err
 
 CLAVIER_PKG_ROOT = Path(__file__).parents[2]
 ENTRYPOINT_PKG_ROOT = CLAVIER_PKG_ROOT / "entrypoint"
@@ -31,6 +31,7 @@ def entrypoint_pkg_name() -> str:
         raise TypeError(
             "expected {}:package.name to be a {}; found {}: {}".format(
                 io.fmt_path(cargo_config_path),
+                txt.fmt(int),
                 txt.fmt_type_of(pkg_name),
                 txt.fmt(pkg_name),
             )
@@ -39,10 +40,36 @@ def entrypoint_pkg_name() -> str:
     return pkg_name
 
 
+def get_default_name() -> str:
+    cwd = Path.cwd()
+    dir = cwd
+
+    while dir.parent != dir:
+        path = dir / "pyproject.toml"
+
+        if path.is_file():
+            try:
+                with path.open("rb") as file:
+                    pyproject = tomli.load(file)
+                name = pyproject["tool"]["poetry"]["name"]
+
+                if isinstance(name, str):
+                    return name
+            except:
+                pass
+
+        dir = dir.parent
+
+    raise err.UserError(
+        "Failed to find a pyproject.toml to get a default name from, "
+        "please provide an explicit `--name`"
+    )
+
+
 @cmd.as_cmd
 def build(
-    name: str,
     *,
+    name: str | None = None,
     work_dir: Path = DEFAULT_WORK_DIR,
     python_exe: Path = DEFAULT_PYTHON_EXE,
     python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
@@ -79,6 +106,8 @@ def build(
         If you run `poetry run python -m clavier.srv.entrypoint` from your app's
         project you should get the correct Python path by default.
     """
+    name_s = name or get_default_name()
+
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -88,7 +117,7 @@ def build(
         env=(
             os.environ
             | {
-                "ENTRYPOINT_NAME": name,
+                "ENTRYPOINT_NAME": name_s,
                 "ENTRYPOINT_WORK_DIR": str(work_dir),
                 "ENTRYPOINT_PYTHON_EXE": str(python_exe),
                 "ENTRYPOINT_PYTHON_PATH": ":".join(
@@ -100,12 +129,16 @@ def build(
 
 
 @cmd.as_cmd
-def install(name: str, *, install_dir: Path = DEFAULT_INSTALL_DIR):
+def install(
+    *, name: str | None = None, install_dir: Path = DEFAULT_INSTALL_DIR
+):
+    name_s = name or get_default_name()
+
     install_dir = install_dir.resolve()
 
     install_dir.mkdir(parents=True, exist_ok=True)
 
-    dest = install_dir / name
+    dest = install_dir / name_s
     src = ENTRYPOINT_PKG_ROOT / "target" / "release" / entrypoint_pkg_name()
 
     shutil.copyfile(src, dest)
@@ -114,30 +147,39 @@ def install(name: str, *, install_dir: Path = DEFAULT_INSTALL_DIR):
 
 @cmd.as_cmd
 def create(
-    name: str,
     *,
+    name: str | None = None,
     work_dir: Path = DEFAULT_WORK_DIR,
     python_exe: Path = DEFAULT_PYTHON_EXE,
     python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
     install_dir: Path = DEFAULT_INSTALL_DIR,
 ):
+    name_s = name or get_default_name()
+
     build(
-        name, work_dir=work_dir, python_exe=python_exe, python_path=python_path
+        name=name_s,
+        work_dir=work_dir,
+        python_exe=python_exe,
+        python_path=python_path,
     )
-    install(name, install_dir=install_dir)
+    install(name=name_s, install_dir=install_dir)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    name = __spec__.name
     sesh = Sesh(
         # Need to do this 'cause `__name__` is set to "__main__" when running
         # via `python -m clavier.srv.entrypoint`
-        pkg_name=__spec__.name,
+        pkg_name=name,
         description="""
             Generate an _entrypoint_ executable that talks to a Clavier app
             running in _server mode_ (see `clavier.srv`)
         """,
         cmds=(create, build, install),
     )
+
+    with cfg.changeset(io.rel, src=name) as rel:
+        rel.to = Path.cwd()
 
     return sesh.execute(argv)
 

@@ -22,7 +22,7 @@ import splatlog
 from rich.console import Console
 from rich.repr import RichReprResult
 
-from . import err, io, cfg, etc, txt
+from . import err, io, cfg, etc
 from .arg_par import ArgumentParser
 from .arg_par.argument_parser import TARGET_NAME, Setting, Target, check_target
 
@@ -231,7 +231,7 @@ class Sesh:
 
     def _handle(self, request: Req) -> int:
         with error_context(
-            f"executing {txt.fmt(request.target)}", expect_system_exit=True
+            f"executing {etc.txt.fmt(request.target)}", expect_system_exit=True
         ):
             if request.is_async:
                 result = asyncio.run(request.target(**request.kwds))
@@ -243,7 +243,7 @@ class Sesh:
         return self._render_view(view)
 
     def _render_view(self, view: io.View) -> int:
-        with error_context(f"rendering view {txt.fmt_type_of(view)}"):
+        with error_context(f"rendering view {etc.txt.fmt_type_of(view)}"):
             try:
                 view_format = self.get_setting("output", str)
                 view.render(view_format)

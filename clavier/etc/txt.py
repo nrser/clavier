@@ -25,13 +25,12 @@ on anything outside the standard library, and should probably stay that way.
 """
 
 from typing import Sequence, Callable, Any, Iterable, Union
-import inspect
 from pathlib import Path
 import shlex
 import os
 import re
 
-import splatlog
+import splatlog.lib.text
 
 from rich.console import Console
 from rich.pretty import Pretty
@@ -43,8 +42,8 @@ _CONSOLE = Console(
     width=80,
 )
 
-fmt = splatlog.lib.fmt
-fmt_type_of = splatlog.lib.fmt_type_of
+fmt = splatlog.lib.text.fmt
+fmt_type_of = splatlog.lib.text.fmt_type_of
 
 
 _SQUISH_RE = re.compile(r"\s+")

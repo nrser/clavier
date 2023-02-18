@@ -1,21 +1,3 @@
-from pathlib import Path
-from collections import UserList
-from typing import overload
-
-from rich.console import (
-    Console,
-    Group,
-    RenderableType,
-)
-from rich.rule import Rule
-from rich.text import Text, TextType
-from rich.syntax import Syntax
-from rich.panel import Panel
-from rich.padding import Padding, PaddingDimensions
-from rich.traceback import Traceback
-
-from clavier import etc, txt, cfg
-
 from .io_consts import (
     THEME,
     OUT,

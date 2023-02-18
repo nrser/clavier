@@ -21,7 +21,7 @@ from rich.padding import Padding, PaddingDimensions
 from rich.traceback import Traceback
 from rich.pretty import Pretty
 
-from clavier import txt, cfg
+from clavier import cfg, etc
 
 from .io_consts import OUT, NEWLINE
 
@@ -148,7 +148,7 @@ def fmt_path(path: Path) -> str:
 
 def fmt_cmd(cmd, *, code_width: int = 80, **opts):
     if isinstance(cmd, (list, tuple)):
-        cmd = txt.fmt_cmd(cmd, code_width=code_width)
+        cmd = etc.txt.fmt_cmd(cmd, code_width=code_width)
     return code(cmd, "shell", **opts)
 
 

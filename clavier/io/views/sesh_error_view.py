@@ -8,7 +8,7 @@ from rich.markdown import Markdown
 
 from splatlog.json.default_handlers import TRACEBACK_HANDLER
 
-from clavier import txt
+from clavier import etc
 
 from .sesh_view import SeshView
 from ..io_helpers import as_traceback, error_panel
@@ -85,10 +85,10 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
     def get_context(self) -> TextType | None:
         if self.data.context is None:
             return None
-        return f"{txt.fmt_type_of(self.error)} raised when {self.data.context}:"
+        return f"{etc.txt.fmt_type_of(self.error)} raised when {self.data.context}:"
 
     def get_title(self) -> TextType | None:
-        return txt.fmt_type_of(self.error)
+        return etc.txt.fmt_type_of(self.error)
 
     def render_rich(self) -> None:
         self.err.print(
@@ -108,7 +108,7 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
         payload = {
             "exit_status": self.exit_status,
             "error": {
-                "type": txt.fmt_type_of(self.error),
+                "type": etc.txt.fmt_type_of(self.error),
                 "args": self.error.args,
             },
             "message": self.get_error_message(),

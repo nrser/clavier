@@ -17,7 +17,7 @@ from splatlog.lib.typeguard import satisfies
 from splatlog.lib.text import fmt, fmt_type_of
 from rich.repr import RichReprResult
 
-from clavier import etc, txt, err
+from clavier import etc, err
 
 from .key import Key, KeyMatter
 
@@ -385,7 +385,7 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
             target = target._get_parent_()
 
     def _description_(self) -> str:
-        return txt.fmt_type_of(self, module_names=False)
+        return etc.txt.fmt_type_of(self, module_names=False)
 
     def __repr__(self) -> str:
         return "<{}>".format(

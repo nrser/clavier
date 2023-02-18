@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Mapping, NamedTuple, Sequence
-from clavier.etc.iter import intersperse
 
 from splatlog.lib.rich import enrich
 
@@ -15,7 +14,7 @@ from rich.measure import Measurement
 from rich.padding import Padding
 from rich.style import Style as _S
 
-from clavier import io, txt
+from clavier import io
 
 from clavier.arg_par.actions import ClavierAction
 from clavier.arg_par.subparsers import Subparsers

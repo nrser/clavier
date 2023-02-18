@@ -20,7 +20,7 @@ from more_itertools import only
 
 from rich.repr import RichReprResult
 
-from clavier import arg_par, txt, etc
+from clavier import arg_par, etc
 
 TParams = ParamSpec("TParams")
 TReturn = TypeVar("TReturn")
@@ -60,7 +60,9 @@ class ActionUnionType:
                         return member(value)
                     except:
                         pass
-        raise ValueError(f"unable to cast {value!r} to {txt.fmt(self.union)}")
+        raise ValueError(
+            f"unable to cast {value!r} to {etc.txt.fmt(self.union)}"
+        )
 
     def __rich_repr__(self) -> RichReprResult:
         yield self.union
