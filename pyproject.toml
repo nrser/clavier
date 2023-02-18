@@ -22,8 +22,7 @@ packages = [
 Homepage = "https://github.com/nrser/clavier"
 
 [tool.poetry.dependencies]
-# We use typing.Literal, which is 3.8+
-python = "^3.8"
+python = "^3.10"
 
 # Pretty terminal printing
 #
