@@ -101,7 +101,7 @@ class EnrichedPath:
     ) -> Measurement:
         return Measurement(self.min_width, self.max_width)
 
-    def __rich_console__(
+    def __rich_console__old(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
         if self.max_width < options.max_width:
@@ -158,3 +158,44 @@ class EnrichedPath:
             )
 
             is_first_line = False
+
+    def _as_piece(self, s: str) -> tuple[str, str]:
+        if s == self._cont:
+            return (s, "path.cont")
+        if s == self._sep:
+            return (s, "path.sep")
+        return (s, "path.part")
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        if self.max_width < options.max_width:
+            yield self.to_text()
+            return
+
+        pieces: list[tuple[str, str]] = []
+
+        for i, part in enumerate(self.parts):
+            if (
+                sum(len(part) for part, _style in pieces)
+                + len(part)
+                + self._sep_len
+            ) < options.max_width:
+                if pieces and pieces[-1][0] != self._sep:
+                    pieces.append(self._as_piece(self._sep))
+
+                pieces.append(self._as_piece(part))
+
+            else:
+                if pieces:
+                    if i < len(self.parts):
+                        pieces.append(self._as_piece(self._sep))
+
+                    yield Text.assemble(*pieces, no_wrap=True)
+
+                pieces = [
+                    self._as_piece(self._cont),
+                    self._as_piece(part),
+                ]
+
+        yield Text.assemble(*pieces, no_wrap=True)

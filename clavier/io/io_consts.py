@@ -45,6 +45,7 @@ THEME = Theme(
         # ====================================================================
         "path.part": _S(color="green"),
         "path.sep": _S(color="magenta"),
+        "path.cont": _S(color="white", dim=True),
     }
 )
 
