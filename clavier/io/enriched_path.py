@@ -89,10 +89,8 @@ class EnrichedPath:
         pieces = []
         for part in self.parts:
             if pieces and pieces[-1][0] != self._sep:
-                pieces.append((self._sep, "path.sep"))
-            pieces.append(
-                (part, "path.sep" if part == self._sep else "path.part")
-            )
+                pieces.append(self._as_piece(self._sep))
+            pieces.append(self._as_piece(part))
 
         return Text.assemble(*pieces, no_wrap=True)
 
@@ -100,64 +98,6 @@ class EnrichedPath:
         self, console: Console, options: ConsoleOptions
     ) -> Measurement:
         return Measurement(self.min_width, self.max_width)
-
-    def __rich_console__old(
-        self, console: Console, options: ConsoleOptions
-    ) -> RenderResult:
-        if self.max_width < options.max_width:
-            yield self.to_text()
-            return
-
-        parts = list(self.parts)
-        is_first_line = True
-
-        while parts:
-            pieces: list[tuple[str, str]] = []
-            length = 0
-
-            while parts and (
-                (
-                    length
-                    + (0 if is_first_line else self._cont_len)
-                    + len(parts[0])
-                    + self._sep_len
-                )
-                < options.max_width
-            ):
-                if pieces and (pieces[-1][0] != self._sep):
-                    pieces.append((self._sep, "path.sep"))
-                    length += self._sep_len
-
-                part = parts.pop(0)
-
-                pieces.append(
-                    (
-                        part,
-                        "path.sep" if part == self._sep else "path.part",
-                    )
-                )
-
-                length += len(part)
-
-            if not pieces:
-                part = parts.pop(0)
-                pieces.append(
-                    (
-                        part,
-                        "path.sep" if part == self._sep else "path.part",
-                    )
-                )
-
-            if parts:
-                pieces.append((self._sep, "path.sep"))
-
-            yield Text.assemble(
-                ("" if is_first_line else self._cont),
-                *pieces,
-                no_wrap=True,
-            )
-
-            is_first_line = False
 
     def _as_piece(self, s: str) -> tuple[str, str]:
         if s == self._cont:
@@ -171,31 +111,30 @@ class EnrichedPath:
     ) -> RenderResult:
         if self.max_width < options.max_width:
             yield self.to_text()
-            return
+        else:
+            pieces: list[tuple[str, str]] = []
 
-        pieces: list[tuple[str, str]] = []
-
-        for i, part in enumerate(self.parts):
-            if (
-                sum(len(part) for part, _style in pieces)
-                + len(part)
-                + self._sep_len
-            ) < options.max_width:
-                if pieces and pieces[-1][0] != self._sep:
-                    pieces.append(self._as_piece(self._sep))
-
-                pieces.append(self._as_piece(part))
-
-            else:
-                if pieces:
-                    if i < len(self.parts):
+            for i, part in enumerate(self.parts):
+                if (
+                    sum(len(part) for part, _style in pieces)
+                    + len(part)
+                    + self._sep_len
+                ) < options.max_width:
+                    if pieces and pieces[-1][0] != self._sep:
                         pieces.append(self._as_piece(self._sep))
 
-                    yield Text.assemble(*pieces, no_wrap=True)
+                    pieces.append(self._as_piece(part))
 
-                pieces = [
-                    self._as_piece(self._cont),
-                    self._as_piece(part),
-                ]
+                else:
+                    if pieces:
+                        if i < len(self.parts):
+                            pieces.append(self._as_piece(self._sep))
 
-        yield Text.assemble(*pieces, no_wrap=True)
+                        yield Text.assemble(*pieces, no_wrap=True)
+
+                    pieces = [
+                        self._as_piece(self._cont),
+                        self._as_piece(part),
+                    ]
+
+            yield Text.assemble(*pieces, no_wrap=True)
