@@ -41,6 +41,10 @@ THEME = Theme(
         "help.header.text": _S(color="red", bold=True),
         "help.header.rule": _S(color="#272822"),
         "prog": _S(bgcolor="cyan", color="white", bold=True),
+        #
+        # ====================================================================
+        "path.part": _S(color="green"),
+        "path.sep": _S(color="magenta"),
     }
 )
 

@@ -45,8 +45,10 @@ impl RetryConfig {
 }
 
 pub struct Config {
-    // name: String,
+    pub name: String,
     pub work_dir: PathBuf,
+    pub python_exe: String,
+    pub python_path: String,
     pub socket_path: PathBuf,
     pub pid_path: PathBuf,
     pub kill_server: RetryConfig,
@@ -57,14 +59,18 @@ impl Config {
     pub fn new(
         name: &str,
         work_dir: &str,
+        python_exe: &str,
+        python_path: &str,
         kill_server: Option<RetryConfig>,
         connect_server: Option<RetryConfig>,
     ) -> Config {
         let wd = Path::new(work_dir);
 
         Config {
-            // name: String::from(name),
+            name: String::from(name),
             work_dir: PathBuf::from(wd),
+            python_exe: String::from(python_exe),
+            python_path: String::from(python_path),
             socket_path: wd.join(format!(".{name}.sock")),
             pid_path: wd.join(format!(".{name}.pid")),
             kill_server: kill_server.unwrap_or(RetryConfig::default()),

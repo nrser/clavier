@@ -165,6 +165,10 @@ class RichHelpFormatter(HelpFormatter):
     def short(self) -> bool:
         return self._short
 
+    @property
+    def indent(self) -> int:
+        return self._indent
+
     def _add_item(
         self,
         func: Callable[TParams, _RT | None],
@@ -341,7 +345,9 @@ class RichHelpFormatter(HelpFormatter):
 
         def make_table():
             table = Table(
-                padding=(0, self._indent // 2), show_header=False, box=None
+                padding=(0, self._indent // 2),
+                show_header=False,
+                box=None,
             )
             table.add_column(width=inv_width + self._indent)
             table.add_column()

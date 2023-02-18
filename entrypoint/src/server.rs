@@ -3,9 +3,9 @@ use nix::unistd::Pid;
 use std::error::Error;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::process;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::{env, process};
 
 use crate::config::Config;
 
@@ -34,21 +34,12 @@ pub fn is_kill_arg(arg: &str) -> bool {
 }
 
 pub fn create(config: &Config) -> Result<(), Box<dyn Error>> {
-    let python_exe = config.work_dir.join(".venv/bin/python");
+    let mut command = process::Command::new(config.python_exe.clone());
 
-    let python_path: String = match env::var("PYTHONPATH") {
-        Ok(value) => {
-            format!("{}:{}", value, config.work_dir.display().to_string())
-        }
-        Err(_) => config.work_dir.display().to_string(),
-    };
-
-    let mut command = process::Command::new(python_exe);
-
-    command.env("PYTHONPATH", python_path);
+    command.env("PYTHONPATH", config.python_path.clone());
     command.env("CLAVIER_SRV", "true");
     command.arg("-m");
-    command.arg("handoff");
+    command.arg(config.name.clone());
     command.arg("--_NOOP");
 
     let mut child = command.spawn()?;

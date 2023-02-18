@@ -1,5 +1,5 @@
 [package]
-name = "clavier-entrypoint"
+name = "clavier-srv-entrypoint"
 version = "0.1.0"
 edition = "2021"
 

@@ -22,7 +22,10 @@ mod server;
 use config::Config;
 
 // SEE https://stackoverflow.com/a/51620853
-const WORK_DIR: &str = env!("PWD");
+const NAME: &str = env!("ENTRYPOINT_NAME");
+const WORK_DIR: &str = env!("ENTRYPOINT_WORK_DIR");
+const PYTHON_EXE: &str = env!("ENTRYPOINT_PYTHON_EXE");
+const PYTHON_PATH: &str = env!("ENTRYPOINT_PYTHON_PATH");
 
 lazy_static! {
     static ref SIGNALED: AtomicBool = AtomicBool::new(false);
@@ -38,7 +41,8 @@ extern "C" fn handle_sigint(signal: libc::c_int) {
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
-    let config = Config::new("handoff", WORK_DIR, None, None);
+    let config =
+        Config::new(NAME, WORK_DIR, PYTHON_EXE, PYTHON_PATH, None, None);
 
     let cwd = env::current_dir()?;
 

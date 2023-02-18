@@ -1452,7 +1452,7 @@ files = [
 name = "more-itertools"
 version = "9.0.0"
 description = "More routines for operating on iterables, beyond itertools"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -2872,4 +2872,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "d8bf610690112b2ee1dd42a8ea944185dcf48c0e34b66ae07bba712e98df69c8"
+content-hash = "b4d27530124a34eabf7c54c217f2afecfe895ad145eefbdb025c09421be1055e"

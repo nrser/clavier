@@ -1,9 +1,10 @@
 from argparse import Action, SUPPRESS
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, Generator, NamedTuple
-from clavier.arg_par.actions import ClavierAction
-from clavier.arg_par.subparsers import Subparsers
+
+from splatlog.lib.rich import enrich
 
 from rich.text import Text
 from rich.console import Group, RenderableType as _RT
@@ -11,8 +12,13 @@ from rich.table import Table
 from rich.pretty import Pretty
 from rich.measure import Measurement
 from rich.padding import Padding
+from rich.style import Style as _S
 
 from clavier import io, txt
+
+from clavier.arg_par.actions import ClavierAction
+from clavier.arg_par.subparsers import Subparsers
+from clavier.io.enriched_path import EnrichedPath
 
 if TYPE_CHECKING:
     from .rich_help_formatter import RichHelpFormatter
@@ -42,9 +48,25 @@ class RichActionFormatter:
         )
 
     def format_value(self, value: object) -> _RT:
-        if isinstance(value, str):
-            return Text(value, "help.action.str_value")
-        return Pretty(value)
+        match value:
+            case str(s):
+                return Text(s, "help.action.str_value")
+            case Path() as path:
+                return EnrichedPath(path)
+            case tuple() | list():
+                table = Table(
+                    padding=(0, 2, 0, 0),
+                    # show_header=False,
+                    title=f"{value.__class__.__name__}[{len(value)}]",
+                    box=None,
+                )
+                table.add_column()
+                table.add_column()
+                for i, e in enumerate(value):
+                    table.add_row(f"[{i}]", self.format_value(e))
+                return table
+            case other:
+                return Pretty(other)
 
     @cached_property
     def default_row(self) -> _InfoTableRow | None:
@@ -74,15 +96,23 @@ class RichActionFormatter:
 
     @cached_property
     def info_table(self) -> _RT | None:
-        table = Table(padding=(0, 2, 0, 0), show_header=False, box=None)
+        if rows := list(self.info_table_rows()):
+            table = Table(
+                padding=(0, self.formatter.indent, 0, 0),
+                show_header=False,
+                box=None,
+                # expand=True,
+            )
 
-        for index, row in enumerate(self.info_table_rows()):
-            if index != 0:
-                table.add_row(io.EMPTY, io.EMPTY)
-            table.add_row(*row)
+            table.add_column()  # ratio=2)
+            table.add_column()  # ratio=10)
 
-        if table.row_count > 0:
-            return Padding(table, (0, 0))
+            for index, row in enumerate(rows):
+                if index != 0:
+                    table.add_row(io.EMPTY, io.EMPTY)
+                table.add_row(*row)
+
+            return table
 
     @cached_property
     def subactions(self) -> _RT | None:
@@ -113,7 +143,7 @@ class RichActionFormatter:
     def type(self) -> _RT:
         if self.action.type is None:
             return io.EMPTY
-        return Pretty(txt.fmt(self.action.type))
+        return enrich(self.action.type)
 
     def label(self, name: str, icon: str = "🏷 ") -> Text:
         # Tried with an icon, ended up just feeling too noisy
