@@ -4,62 +4,48 @@ from subprocess import run
 import sys
 import shutil
 from typing import Callable, Sequence
+import tomli
+
 from more_itertools import always_iterable
 
-from clavier import Sesh, cmd, sh
+from clavier import Sesh, cmd, sh, io, txt
 
 CLAVIER_PKG_ROOT = Path(__file__).parents[2]
 ENTRYPOINT_PKG_ROOT = CLAVIER_PKG_ROOT / "entrypoint"
-ENTRYPOINT_PKG_NAME = "clavier-srv-entrypoint"
+
+DEFAULT_WORK_DIR = Path.cwd()
+DEFAULT_PYTHON_EXE = Path(sys.executable)
+DEFAULT_PYTHON_PATH = tuple(Path(path) for path in sys.path if path != "")
+DEFAULT_INSTALL_DIR = Path.cwd() / "bin"
 
 
-def default_python_exe() -> Path:
-    # return str(Path(sys.executable).resolve())
-    return Path(sys.executable)
+def entrypoint_pkg_name() -> str:
+    cargo_config_path = ENTRYPOINT_PKG_ROOT / "Cargo.toml"
 
+    with cargo_config_path.open("rb") as file:
+        cargo_config = tomli.load(file)
 
-def default_python_path() -> list[Path]:
-    return [Path(e) for e in sys.path if e != ""]
-    path = []
-    for entry in sys.path:
-        if entry == "":
-            # Turns out `poetry run` puts the project directory on the path,
-            # it's just _last_ and I didn't notice it at first.
-            # path.append(str(Path.cwd()))
-            pass
-        else:
-            path.append(entry)
-    return path
+    pkg_name = cargo_config["package"]["name"]
 
+    if not isinstance(pkg_name, str):
+        raise TypeError(
+            "expected {}:package.name to be a {}; found {}: {}".format(
+                io.fmt_path(cargo_config_path),
+                txt.fmt_type_of(pkg_name),
+                txt.fmt(pkg_name),
+            )
+        )
 
-def default_work_dir() -> Path:
-    return Path.cwd()
-
-
-def default_install_dir() -> Path:
-    return Path.cwd() / "bin"
-
-
-def _get_dir_path(
-    arg: str | Path | None, default: Path | Callable[[], Path]
-) -> Path:
-    match arg:
-        case None:
-            return default() if callable(default) else default
-        case Path():
-            return arg
-        case str(s):
-            return Path(s)
-    raise TypeError("bad dir")
+    return pkg_name
 
 
 @cmd.as_cmd
 def build(
     name: str,
     *,
-    work_dir: Path = default_work_dir(),
-    python_exe: Path = default_python_exe(),
-    python_path: str | list[Path] = default_python_path(),
+    work_dir: Path = DEFAULT_WORK_DIR,
+    python_exe: Path = DEFAULT_PYTHON_EXE,
+    python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
 ):
     """Build an _entrypoint_ executable. Configuration is compiled in from the
     arguments (so that the executable doesn't have to read anything to execute).
@@ -93,12 +79,8 @@ def build(
         If you run `poetry run python -m clavier.srv.entrypoint` from your app's
         project you should get the correct Python path by default.
     """
-
-    work_dir_p: Path = (
-        default_work_dir() if work_dir is None else Path(work_dir)
-    ).resolve()
-
-    work_dir_p.mkdir(parents=True, exist_ok=True)
+    work_dir = work_dir.resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     sh.run(
         ["cargo", "build", "--release"],
@@ -107,7 +89,7 @@ def build(
             os.environ
             | {
                 "ENTRYPOINT_NAME": name,
-                "ENTRYPOINT_WORK_DIR": str(work_dir_p),
+                "ENTRYPOINT_WORK_DIR": str(work_dir),
                 "ENTRYPOINT_PYTHON_EXE": str(python_exe),
                 "ENTRYPOINT_PYTHON_PATH": ":".join(
                     str(p) for p in always_iterable(python_path)
@@ -118,15 +100,13 @@ def build(
 
 
 @cmd.as_cmd
-def install(name: str, install_dir: Path = default_install_dir()):
-    install_dir_p = (
-        default_install_dir() if install_dir is None else Path(install_dir)
-    ).resolve()
+def install(name: str, *, install_dir: Path = DEFAULT_INSTALL_DIR):
+    install_dir = install_dir.resolve()
 
-    install_dir_p.mkdir(parents=True, exist_ok=True)
+    install_dir.mkdir(parents=True, exist_ok=True)
 
-    dest = install_dir_p / name
-    src = ENTRYPOINT_PKG_ROOT / "target" / "release" / ENTRYPOINT_PKG_NAME
+    dest = install_dir / name
+    src = ENTRYPOINT_PKG_ROOT / "target" / "release" / entrypoint_pkg_name()
 
     shutil.copyfile(src, dest)
     shutil.copymode(src, dest)
@@ -135,26 +115,28 @@ def install(name: str, install_dir: Path = default_install_dir()):
 @cmd.as_cmd
 def create(
     name: str,
-    work_dir: Path = default_work_dir(),
-    python_exe: Path = default_python_exe(),
-    python_path: str | list[Path] = default_python_path(),
-    install_dir: Path = default_install_dir(),
+    *,
+    work_dir: Path = DEFAULT_WORK_DIR,
+    python_exe: Path = DEFAULT_PYTHON_EXE,
+    python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
+    install_dir: Path = DEFAULT_INSTALL_DIR,
 ):
     build(
         name, work_dir=work_dir, python_exe=python_exe, python_path=python_path
     )
-    install(name, install_dir)
+    install(name, install_dir=install_dir)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     sesh = Sesh(
-        pkg_name=__name__,
+        # Need to do this 'cause `__name__` is set to "__main__" when running
+        # via `python -m clavier.srv.entrypoint`
+        pkg_name=__spec__.name,
         description="""
             Generate an _entrypoint_ executable that talks to a Clavier app
             running in _server mode_ (see `clavier.srv`)
         """,
         cmds=(create, build, install),
-        prog_name=__name__,
     )
 
     return sesh.execute(argv)
