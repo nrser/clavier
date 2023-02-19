@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 import os
 from gettext import gettext as _
-from clavier.arg_par.actions import ClavierAction, ShortHelpAction, StoreSetting
+from clavier.arg_par.actions import ClavierAction, ShortHelp, StoreSetting
 
 from rich.console import Console
 import splatlog
@@ -151,7 +151,7 @@ class ArgumentParser(argparse.ArgumentParser):
         if add_help:
             self.add_argument(
                 "-h",
-                action=ShortHelpAction,
+                action=ShortHelp,
                 default=argparse.SUPPRESS,
                 help=_("show this help message and exit"),
             )

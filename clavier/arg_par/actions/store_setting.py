@@ -1,4 +1,4 @@
-from argparse import OPTIONAL, Action, SUPPRESS, Namespace
+from argparse import Action, SUPPRESS, Namespace
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Optional, Sequence, TypeVar, Union
 
@@ -7,51 +7,13 @@ from rich.repr import RichReprResult
 
 from clavier import cfg
 
+from .clavier_action import ClavierAction
+
 if TYPE_CHECKING:
-    from .argument_parser import ArgumentParser
-
-
-TClavierAction = TypeVar("TClavierAction", bound="ClavierAction")
-
-
-class ClavierAction(Action):
-    _owner: Optional["ArgumentParser"]
-    _propagate: bool
-    _is_inherited: bool
-
-    def __init__(
-        self,
-        *args,
-        propagate: bool = False,
-        owner: Optional["ArgumentParser"] = None,
-        **kwds
-    ):
-        super().__init__(*args, **kwds)
-        self._owner = owner
-        self._propagate = propagate
-        self._is_inherited = False
-
-    @property
-    def owner(self) -> Optional["ArgumentParser"]:
-        return self._owner
-
-    @property
-    def propagate(self) -> bool:
-        return self._propagate
-
-    @property
-    def is_inherited(self) -> bool:
-        return self._is_inherited
-
-    def clone_child(self: TClavierAction) -> TClavierAction:
-        child = deepcopy(self)
-        child._is_inherited = True
-        return child
+    from ..argument_parser import ArgumentParser
 
 
 class StoreSetting(ClavierAction):
-    _log = splatlog.LoggerProperty()
-
     _key: cfg.Key
     _wrapped_action: Action
     _wrapped_namespace: Namespace
@@ -129,30 +91,3 @@ class StoreSetting(ClavierAction):
     def __rich_repr__(self) -> RichReprResult:
         yield "options_strings", self.option_strings
         yield "key", self._key
-
-
-class ShortHelpAction(Action):
-    def __init__(
-        self,
-        option_strings: Sequence[str],
-        dest: str = SUPPRESS,
-        default: Any = SUPPRESS,
-        help: str | None = None,
-    ):
-        super().__init__(
-            option_strings=option_strings,
-            dest=dest,
-            default=default,
-            nargs=0,
-            help=help,
-        )
-
-    def __call__(
-        self,
-        parser: "ArgumentParser",
-        namespace: Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = None,
-    ):
-        parser.print_help(short=True)
-        parser.exit()

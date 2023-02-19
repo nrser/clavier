@@ -40,7 +40,7 @@ from typing import (
     TypeVar,
     cast,
 )
-from clavier.arg_par.actions import ClavierAction, ShortHelpAction
+from clavier.arg_par.actions import ClavierAction, ShortHelp
 
 import splatlog
 from rich.syntax import Syntax
@@ -314,7 +314,7 @@ class RichHelpFormatter(HelpFormatter):
 
         if self._short:
             # Omit help actions themselves in short format
-            if isinstance(action, (_HelpAction, ShortHelpAction)):
+            if isinstance(action, (_HelpAction, ShortHelp)):
                 return False
 
             # Omit inherited actions in short format
