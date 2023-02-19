@@ -208,16 +208,16 @@ class Sesh:
         self,
         argv: Sequence[str] | None = None,
     ) -> Req:
-        _argv: Sequence[str] = sys.argv[1:] if argv is None else argv
+        argv = sys.argv[1:] if argv is None else argv
 
-        self._log.debug("Parsing arguments...", argv=_argv)
+        self._log.debug("Parsing arguments...", argv=argv)
 
         with error_context("parsing arguments"):
-            args = self.parser.parse_args(_argv)
+            args = self.parser.parse_args(argv)
 
         with error_context("constructing request"):
             request = Req(
-                argv=tuple(_argv),
+                argv=tuple(argv),
                 args=args,
             )
 
