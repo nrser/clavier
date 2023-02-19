@@ -423,7 +423,7 @@ class Key(Sequence[str], Generic[T]):
 
         ```
         """
-        s = ", ".join(repr(s) for s in self._parts)
+        s = repr(str(self))
 
         if self._v_type is not Any:
             if isclass(self._v_type):
