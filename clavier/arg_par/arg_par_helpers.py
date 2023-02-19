@@ -28,3 +28,5 @@ def invoke_hook(
 ) -> None:
     if name := find_hook_name(obj, hook_names):
         return getattr(obj, name)(subparsers)
+    elif callable(obj):
+        obj(subparsers)
