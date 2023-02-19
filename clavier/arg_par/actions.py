@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Optional, Sequence, TypeVar, Union
 
 import splatlog
+from rich.repr import RichReprResult
 
 from clavier import cfg
 
@@ -124,6 +125,10 @@ class StoreSetting(ClavierAction):
 
         if hasattr(namespace, self.dest):
             delattr(namespace, self.dest)
+
+    def __rich_repr__(self) -> RichReprResult:
+        yield "options_strings", self.option_strings
+        yield "key", self._key
 
 
 class ShortHelpAction(Action):

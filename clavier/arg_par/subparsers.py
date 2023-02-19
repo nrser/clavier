@@ -58,10 +58,15 @@ class Subparsers(argparse._SubParsersAction):
 
         parser = super().add_parser(name, **kwds)
 
-        for action in self.propagated_actions:
-            self._log.debug(
-                "Propagating action to {} parser...", name, action=action
-            )
+        propagated_actions = self.propagated_actions
+
+        self._log.debug(
+            "Propagating actions to {!r} parser...",
+            name,
+            propagated_actions=propagated_actions,
+        )
+
+        for action in propagated_actions:
             parser._add_action(action)
 
         return parser
