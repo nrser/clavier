@@ -208,7 +208,9 @@ class Sesh:
         self,
         argv: Sequence[str] | None = None,
     ) -> Req:
-        _argv = sys.argv[1:] if argv is None else argv
+        _argv: Sequence[str] = sys.argv[1:] if argv is None else argv
+
+        self._log.debug("Parsing arguments...", argv=_argv)
 
         with error_context("parsing arguments"):
             args = self.parser.parse_args(_argv)
