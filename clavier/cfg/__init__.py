@@ -247,7 +247,7 @@ def get_pkg_scope(
 
     ```
     """
-    return get(Key(module_name).root, v_type=Scope)
+    return get_scope(Key(module_name).root)
 
 
 @overload
