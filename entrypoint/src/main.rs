@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::prelude::*;
 use std::os::{fd::AsRawFd, fd::RawFd};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
@@ -21,6 +22,8 @@ mod server;
 
 use config::Config;
 
+const DOTENV_PATH: Option<&str> = option_env!("ENTRYPOINT_DOTENV_PATH");
+
 lazy_static! {
     static ref SIGNALED: AtomicBool = AtomicBool::new(false);
 }
@@ -34,6 +37,12 @@ extern "C" fn handle_sigint(signal: libc::c_int) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
+
+    if let Some(dotenv_path) = DOTENV_PATH {
+        if Path::new(dotenv_path).exists() {
+            dotenvy::from_filename(dotenv_path)?;
+        }
+    }
 
     let config = Config::new(None, None);
 

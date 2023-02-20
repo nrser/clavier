@@ -19,8 +19,8 @@ CLAVIER_PKG_ROOT = Path(__file__).parents[2]
 ENTRYPOINT_PKG_ROOT = CLAVIER_PKG_ROOT / "entrypoint"
 
 DEFAULT_WORK_DIR = Path.cwd()
-DEFAULT_PYTHON_EXE = Path(sys.executable)
-DEFAULT_PYTHON_PATH = tuple(Path(path) for path in sys.path if path != "")
+# DEFAULT_PYTHON_EXE = Path(sys.executable)
+# DEFAULT_PYTHON_PATH = tuple(Path(path) for path in sys.path if path != "")
 DEFAULT_INSTALL_DIR = Path.cwd() / "bin"
 
 
@@ -84,10 +84,11 @@ def add_build_parser(subparsers: arg_par.Subparsers) -> None:
     #   poetry run python -m clavier.srv.entrypoint build \
     #       --name cat-sprayer \
     #       --work-dir . \
+    #       --install-dir ./bin \
     #       --start-env CLAVIER_SRV=true \
     #       --start-cwd . \
-    #       --start-program poetry \
-    #       --start-args -m cat_sprayer.dev --_NOOP
+    #       -- poetry run blah --_NOOP
+    #
 
     parser = subparsers.add_parser(
         "build",
@@ -159,6 +160,19 @@ def add_build_parser(subparsers: arg_par.Subparsers) -> None:
         """,
     )
 
+    parser.add_argument(
+        "--run-dotenv",
+        type=Path,
+        help="""
+            Optional `.env` file for the entrypoint to load _every_ time it
+            executes a command. So, obviously, it will add latency.
+
+            This is needed if you count on `poetry-dotenv-plugin` to load env
+            vars from `.env` file (like compiler flags, library paths, etc...
+            lookin' at you macOS).
+        """,
+    )
+
 
 def build(
     start_cmd: Any,
@@ -167,25 +181,12 @@ def build(
     start_cwd: Path | None = None,
     start_env: Mapping[str, str] = {},
     install_dir: Path | None = None,
+    run_dotenv: Path | None = None,
 ):
     """Build an _entrypoint_ executable. Configuration is compiled in from the
     arguments (so that the executable doesn't have to read anything to execute).
-
-    ##### Parameters #####
-
-    -   `name` — Name of the target executable, which is typically the name of
-        the Clavier app it's being built for.
-
-        This needs to match the name of the Calvier app that the _entrypoint_
-        targets, since it's used in the PID and socket file names.
-
-    -   `work_dir` — Where the Clavier app server will "live", i.e. store it's
-        PID and socket files.
-
-        If `None` this defaults to the current directory (see
-        `default_work_dir`).
-
     """
+
     name = name or get_default_name()
 
     work_dir = work_dir.resolve()
@@ -217,6 +218,7 @@ def build(
         pid_path=pid_path,
         socket_path=socket_path,
         start_cmd=start_cmd,
+        run_dotenv=run_dotenv,
     )
 
     env = {
@@ -224,6 +226,15 @@ def build(
         "ENTRYPOINT_SOCKET_PATH": socket_path,
         "ENTRYPOINT_START_CMD_JSON": json.dumps(start_cmd),
     }
+
+    if run_dotenv is not None:
+        run_dotenv = run_dotenv.resolve()
+
+        assert run_dotenv.is_file(), ("Run .env file not found at {}").format(
+            run_dotenv
+        )
+
+        env["ENTRYPOINT_DOTENV_PATH"] = str(run_dotenv)
 
     _LOG.debug("Build environment additions", env=env)
 
