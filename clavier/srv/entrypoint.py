@@ -149,6 +149,16 @@ def add_build_parser(subparsers: arg_par.Subparsers) -> None:
         """,
     )
 
+    parser.add_argument(
+        "-i",
+        "--install-dir",
+        type=Path,
+        help="""
+            Optionally "install" the entrypoint binary to a directory. Just
+            moves it there.
+        """,
+    )
+
 
 def build(
     start_cmd: Any,
@@ -156,6 +166,7 @@ def build(
     work_dir: Path = DEFAULT_WORK_DIR,
     start_cwd: Path | None = None,
     start_env: Mapping[str, str] = {},
+    install_dir: Path | None = None,
 ):
     """Build an _entrypoint_ executable. Configuration is compiled in from the
     arguments (so that the executable doesn't have to read anything to execute).
@@ -222,41 +233,15 @@ def build(
         env=(os.environ | env),
     )
 
+    _LOG.info("Successfully built.")
 
-@cmd.as_cmd
-def install(
-    *, name: str | None = None, install_dir: Path = DEFAULT_INSTALL_DIR
-):
-    name_s = name or get_default_name()
+    if install_dir is not None:
+        dest = install_dir / name
+        src = ENTRYPOINT_PKG_ROOT / "target" / "release" / entrypoint_pkg_name()
 
-    install_dir = install_dir.resolve()
+        shutil.move(src, dest)
 
-    install_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = install_dir / name_s
-    src = ENTRYPOINT_PKG_ROOT / "target" / "release" / entrypoint_pkg_name()
-
-    shutil.copyfile(src, dest)
-    shutil.copymode(src, dest)
-
-
-@cmd.as_cmd
-def create(
-    *,
-    name: str | None = None,
-    work_dir: Path = DEFAULT_WORK_DIR,
-    python_exe: Path = DEFAULT_PYTHON_EXE,
-    python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
-    install_dir: Path = DEFAULT_INSTALL_DIR,
-):
-    name_s = name or get_default_name()
-
-    build(
-        name=name_s,
-        work_dir=work_dir,
-        start_cmd=None,
-    )
-    install(name=name_s, install_dir=install_dir)
+        _LOG.info("Moved binary to {}", dest)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -269,7 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             Generate an _entrypoint_ executable that talks to a Clavier app
             running in _server mode_ (see `clavier.srv`)
         """,
-        cmds=(create, add_build_parser, install),
+        cmds=add_build_parser,
     )
 
     with cfg.changeset(io.rel, src=name) as rel:

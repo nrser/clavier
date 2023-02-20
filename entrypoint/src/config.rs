@@ -1,7 +1,3 @@
-use nix::unistd::Pid;
-use std::error::Error;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub enum BackoffType {
@@ -45,34 +41,16 @@ impl RetryConfig {
 }
 
 pub struct Config {
-    pub name: String,
-    pub work_dir: PathBuf,
-    pub python_exe: String,
-    pub python_path: String,
-    pub socket_path: PathBuf,
-    pub pid_path: PathBuf,
     pub kill_server: RetryConfig,
     pub connect_server: RetryConfig,
 }
 
 impl Config {
     pub fn new(
-        name: &str,
-        work_dir: &str,
-        python_exe: &str,
-        python_path: &str,
         kill_server: Option<RetryConfig>,
         connect_server: Option<RetryConfig>,
     ) -> Config {
-        let wd = Path::new(work_dir);
-
         Config {
-            name: String::from(name),
-            work_dir: PathBuf::from(wd),
-            python_exe: String::from(python_exe),
-            python_path: String::from(python_path),
-            socket_path: wd.join(format!(".{name}.sock")),
-            pid_path: wd.join(format!(".{name}.pid")),
             kill_server: kill_server.unwrap_or(RetryConfig::default()),
             connect_server: connect_server.unwrap_or(RetryConfig::new(
                 None,
@@ -80,27 +58,5 @@ impl Config {
                 Some(Duration::from_millis(10)),
             )),
         }
-    }
-
-    pub fn read_pid(&self) -> Result<Pid, Box<dyn Error>> {
-        let contents = fs::read_to_string(&self.pid_path)?;
-
-        let pid = contents.trim().parse::<i32>()?;
-
-        if pid <= 0 {
-            return Err("Bad pid in pid file".into());
-        }
-
-        Ok(Pid::from_raw(pid))
-    }
-
-    pub fn remove_pid_file(&self) {
-        info!("Removing PID file at {:?}", self.pid_path);
-        fs::remove_file(self.pid_path.as_os_str()).unwrap_or(());
-    }
-
-    pub fn remove_socket_file(&self) {
-        info!("Removing socket file at {:?}", self.socket_path);
-        fs::remove_file(self.socket_path.as_os_str()).unwrap_or(());
     }
 }
