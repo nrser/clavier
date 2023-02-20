@@ -11,6 +11,7 @@ from time import monotonic_ns
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 import splatlog
+from rich.console import Console
 
 from .config import INT_STRUCT
 
@@ -241,7 +242,27 @@ class RequestHandler(BaseRequestHandler):
                     self._exit_status = 1
 
         except BaseException:
-            self._log.exception(f"CLI raised unexpected error")
+            message = "Error raised while handling request"
+
+            # This will log to the _server_ log, as we're in the `clavier.srv`
+            # namespace.
+            self._log.exception(message)
+
+            # We'd also like to try to tell the user something by writing to
+            # their stderr
+            try:
+                with os.fdopen(self.request.fds[2], "w") as stderr:
+                    console = Console(
+                        file=stderr,
+                        color_system="truecolor",
+                        force_terminal=True,
+                    )
+
+                    console.print(message)
+                    console.print_exception()
+            except:
+                pass
+
             self._exit_status = 1
 
         finally:
