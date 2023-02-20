@@ -8,7 +8,7 @@ import sys
 import importlib.util
 import pkgutil
 from types import ModuleType
-from typing import Any, Generator, Iterable
+from typing import Generator, Iterable
 from clavier import cfg
 
 import splatlog
@@ -43,7 +43,6 @@ def get_child_module(name, package) -> ModuleType:
     return module
 
 
-# @cfg.inject
 def children_modules(
     parent__name__: str,
     parent__path__: Iterable[str],
