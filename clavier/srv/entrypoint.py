@@ -1,14 +1,19 @@
+import json
 import os
 from pathlib import Path
 import sys
 import shutil
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 from clavier.etc import txt
+import distutils.spawn
+from types import MappingProxyType
+
 import tomli
+import splatlog
 
-from more_itertools import always_iterable
+from clavier import Sesh, cmd, sh, io, cfg, etc, err, arg_par
 
-from clavier import Sesh, cmd, sh, io, cfg, etc, err
+_LOG = splatlog.get_logger(__name__)
 
 CLAVIER_PKG_ROOT = Path(__file__).parents[2]
 ENTRYPOINT_PKG_ROOT = CLAVIER_PKG_ROOT / "entrypoint"
@@ -66,13 +71,91 @@ def get_default_name() -> str:
     )
 
 
-@cmd.as_cmd
+def resolve_exe(exe: str) -> str:
+    if resolved := distutils.spawn.find_executable(exe):
+        return resolved
+
+    raise RuntimeError(f"exe not found: {exe!r}")
+
+
+def add_build_parser(subparsers: arg_par.Subparsers) -> None:
+    # Run this like (?)
+    #
+    #   poetry run python -m clavier.srv.entrypoint build \
+    #       --name cat-sprayer \
+    #       --work-dir . \
+    #       --start-env CLAVIER_SRV=true \
+    #       --start-cwd . \
+    #       --start-program poetry \
+    #       --start-args -m cat_sprayer.dev --_NOOP
+
+    parser = subparsers.add_parser(
+        "build",
+        target=build,
+        help="""
+            Build an _entrypoint_ executable. Configuration is compiled in from
+            the arguments (so that the executable doesn't have to read anything
+            to execute).
+        """,
+    )
+
+    parser.add_argument(
+        "start_cmd",
+        nargs="*",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        help="""
+            Name of the target executable, which is typically the name of
+            the Clavier app it's being built for.
+
+            This needs to match the name of the Calvier app that the _entrypoint_
+            targets, since it's used in the PID and socket file names.
+        """,
+    )
+
+    parser.add_argument(
+        "-d",
+        "--work-dir",
+        type=Path,
+        help="""
+            Directory to find `.<name>.pid` and `.<name>.sock` in. needs to
+            match the configuration on the server.
+        """,
+    )
+
+    parser.add_argument(
+        "--start-cwd",
+        type=Path,
+        help="""
+            Optional directory to run the server command in. Useful with
+            `poetry`. If absent, the `--work-dir` will be used.
+        """,
+    )
+
+    parser.add_argument(
+        "--start-env",
+        action=arg_par.actions.SetItem,
+        help="""
+            Additional environment variables to set when _starting_ the server.
+
+            > 📝 NOTE
+            >
+            > These variables will be cleared when a request is handled, as the
+            > handling process replaces it's env with the env of the caller.
+            >
+        """,
+    )
+
+
 def build(
-    *,
+    start_cmd: Any,
     name: str | None = None,
     work_dir: Path = DEFAULT_WORK_DIR,
-    python_exe: Path = DEFAULT_PYTHON_EXE,
-    python_path: str | list[Path] | tuple[Path, ...] = DEFAULT_PYTHON_PATH,
+    start_cwd: Path | None = None,
+    start_env: Mapping[str, str] = {},
 ):
     """Build an _entrypoint_ executable. Configuration is compiled in from the
     arguments (so that the executable doesn't have to read anything to execute).
@@ -91,40 +174,52 @@ def build(
         If `None` this defaults to the current directory (see
         `default_work_dir`).
 
-    -   `python_exe` — What `python` executable to use when starting the server.
-
-        This defaults to the `python` executable that is currently being used,
-        via `sys.executable` (see `default_python_exe`).
-
-        If you run `poetry run python -m clavier.srv.entrypoint` from your app's
-        project you should get the correct `python` by default.
-
-    -   `python_path` — The `PYTHONPATH` environment variable to set when when
-        starting the server. This defaults to the current Python path via
-        `sys.path` (see `default_python_path`).
-
-        If you run `poetry run python -m clavier.srv.entrypoint` from your app's
-        project you should get the correct Python path by default.
     """
-    name_s = name or get_default_name()
+    name = name or get_default_name()
 
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    if start_cwd is None:
+        resolved_start_cwd = work_dir
+    else:
+        resolved_start_cwd = start_cwd.resolve()
+
+        assert resolved_start_cwd.is_dir(), (
+            "`--start-cwd` must be a directory, given {} that resolved to {}"
+        ).format(start_cwd, resolved_start_cwd)
+
+    program, *args = start_cmd
+
+    start_cmd = {
+        "env": start_env,
+        "cwd": str(resolved_start_cwd),
+        "program": resolve_exe(program),
+        "args": args,
+    }
+
+    pid_path = str(work_dir / f".{name}.pid")
+    socket_path = str(work_dir / f".{name}.sock")
+
+    _LOG.info(
+        "Building endpoint...",
+        pid_path=pid_path,
+        socket_path=socket_path,
+        start_cmd=start_cmd,
+    )
+
+    env = {
+        "ENTRYPOINT_PID_PATH": pid_path,
+        "ENTRYPOINT_SOCKET_PATH": socket_path,
+        "ENTRYPOINT_START_CMD_JSON": json.dumps(start_cmd),
+    }
+
+    _LOG.debug("Build environment additions", env=env)
+
     sh.run(
         ["cargo", "build", "--release"],
         cwd=ENTRYPOINT_PKG_ROOT,
-        env=(
-            os.environ
-            | {
-                "ENTRYPOINT_NAME": name_s,
-                "ENTRYPOINT_WORK_DIR": str(work_dir),
-                "ENTRYPOINT_PYTHON_EXE": str(python_exe),
-                "ENTRYPOINT_PYTHON_PATH": ":".join(
-                    str(p) for p in always_iterable(python_path)
-                ),
-            }
-        ),
+        env=(os.environ | env),
     )
 
 
@@ -159,8 +254,7 @@ def create(
     build(
         name=name_s,
         work_dir=work_dir,
-        python_exe=python_exe,
-        python_path=python_path,
+        start_cmd=None,
     )
     install(name=name_s, install_dir=install_dir)
 
@@ -175,7 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             Generate an _entrypoint_ executable that talks to a Clavier app
             running in _server mode_ (see `clavier.srv`)
         """,
-        cmds=(create, build, install),
+        cmds=(create, add_build_parser, install),
     )
 
     with cfg.changeset(io.rel, src=name) as rel:
