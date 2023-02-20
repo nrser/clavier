@@ -1,3 +1,17 @@
+##############################################################################
+# ❗❗ WARNING ❗❗
+#
+# This was the original prototype client for the `clavier.srv` server, before
+# the Rust one (in the top-level `endpoint` directory) was written.
+#
+# The Rust one is tremendously faster, and, that being the whole goal of
+# `clavier.srv`, this client is no longer in use, and won't be maintained or
+# updated.
+#
+# It's simply here for reference at the moment, should I need it (2023-02-19).
+#
+##############################################################################
+
 import pickle
 import signal
 import socket
