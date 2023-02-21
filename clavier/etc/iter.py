@@ -4,6 +4,7 @@ Operating primarily on `typing.Iterable` objects.
 
 from typing import (
     Generator,
+    TypeGuard,
     TypeVar,
     Union,
     Literal,
@@ -24,6 +25,7 @@ from .type import Null, is_null
 K = TypeVar("K")
 T = TypeVar("T")
 V = TypeVar("V")
+S = TypeVar("S")
 
 TItem = TypeVar("TItem")
 TNotFound = TypeVar("TNotFound")
@@ -158,3 +160,20 @@ def interspersed(
     [1, 'and', 2, 'and', 3]
     """
     return list(intersperse(separator, iterable))
+
+
+@overload
+def filtered(predicate: Callable[[T], Any], iterable: Iterable[T]) -> list[T]:
+    ...
+
+
+@overload
+def filtered(
+    predicate: Callable[[S], TypeGuard[T]],
+    iterable: Iterable[S],
+) -> list[T]:
+    ...
+
+
+def filtered(predicate, iterable):
+    return list(filter(predicate, iterable))

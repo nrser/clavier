@@ -1,8 +1,7 @@
 from __future__ import annotations
 import atexit
-import fcntl
-from io import TextIOWrapper
 import os
+from pathlib import Path
 import signal
 import socket
 import sys
@@ -12,15 +11,17 @@ from time import monotonic_ns, perf_counter, sleep
 from types import FrameType
 from typing import Any, cast
 
-from clavier.sesh import Sesh
 
+from watchfiles import Change, watch
 import splatlog
 from rich.console import Console
 from rich.text import Text
 from rich.style import Style
 
+from clavier.sesh import Sesh
 from .config import Config, MAX_DATA_LENGTH
 from .request_handler import Request, RequestHandler
+from .watchable_module import WatchableModule
 
 MAX_FDS = 5
 
@@ -150,6 +151,8 @@ class Server(ForkingMixIn, UnixStreamServer):
             with Server(config) as server:
                 server._log.info("Created server")
 
+                server.watch_files()
+
                 signal.signal(signal.SIGTERM, server._handle_terminate)
                 server._log.info(f"Serving at {config.pid_file_path}")
 
@@ -179,6 +182,10 @@ class Server(ForkingMixIn, UnixStreamServer):
     _config: Config
     _main_pid: int
     _cached_sesh: Sesh | None = None
+    _watch_modules: set[WatchableModule]
+    _watch_files_stop_event: threading.Event
+    _watch_files_thread: threading.Thread
+    _files_changed_event: threading.Event
 
     def __init__(self, config: Config):
         super().__init__(str(config.socket_file_path), RequestHandler)
@@ -191,6 +198,18 @@ class Server(ForkingMixIn, UnixStreamServer):
                 self._cached_sesh = config.get_sesh()
             except:
                 self._log.exception("Failed to create cached session")
+
+        self._watch_files_stop_event = threading.Event()
+        self._files_changed_event = threading.Event()
+
+        self._watch_modules = WatchableModule.root_set_of_loaded(
+            exclude_sys_base=True,
+            exclude_site_packages=True,
+        )
+        self._watch_files_thread = threading.Thread(
+            name="Server._watch_files",
+            target=self._watch_files,
+        )
 
     @property
     def _splatlog_self_(self) -> Text:
@@ -228,6 +247,29 @@ class Server(ForkingMixIn, UnixStreamServer):
         #
         threading.Thread(target=self.shutdown).start()
 
+    def watch_files(self) -> None:
+        self._log.debug(
+            "Starting file watch...",
+            dirs=[str(p) for p in self._watch_dirs],
+        )
+        self._watch_files_thread.start()
+
+    @property
+    def _watch_dirs(self) -> list[Path]:
+        return sorted({wm.dir for wm in self._watch_modules})
+
+    def _watch_filter(self, change: Change, file: str) -> bool:
+        return file.endswith(".py")
+
+    def _watch_files(self):
+        for changes in watch(
+            *self._watch_dirs,
+            watch_filter=self._watch_filter,
+            stop_event=self._watch_files_stop_event,
+        ):
+            self._log.debug("Watched file changes", changes=changes)
+            self._files_changed_event.set()
+
     # socketserver.BaseServer API
     # ------------------------------------------------------------------------
 
@@ -261,6 +303,12 @@ class Server(ForkingMixIn, UnixStreamServer):
 
     def shutdown(self) -> None:
         self._log.debug("Shutdown requested...")
+
+        self._log.debug("Stopping file watch...")
+        self._watch_files_stop_event.set()
+        self._watch_files_thread.join()
+        self._log.debug("File watch stopped.")
+
         super().shutdown()
 
     def server_close(self) -> None:
@@ -308,3 +356,10 @@ class Server(ForkingMixIn, UnixStreamServer):
             client_address,
             exc_info=sys.exc_info(),
         )
+
+    def service_actions(self) -> None:
+        super().service_actions()
+
+        if self._files_changed_event.is_set():
+            self._log.info("Files changed, shutting down...")
+            threading.Thread(target=self.shutdown).start()
