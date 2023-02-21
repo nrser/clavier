@@ -151,7 +151,7 @@ def get(*key_parts: KeyMatter, default: Any) -> Any:
 
 
 @overload
-def get(*key_parts: KeyMatter, default: T, v_type: T) -> T:
+def get(*key_parts: KeyMatter, default: T, v_type: type[T]) -> T:
     ...
 
 
@@ -164,6 +164,21 @@ def get(*args, **kwds):
 
     A `default` keyword argument may also be provided to return if there is no
     value for the `Key`.
+
+    > ❗❗ WARNING ❗❗
+    >
+    > This function is _not_ the same as `Config.get`. `Config.get` adheres to
+    > the `collections.abc.Mapping` API, which has _slightly_ different
+    > semantics.
+    >
+    > The biggest difference is that this `get` will raise when given a key that
+    > doesn't exist _unless_ you explicitly provide a `default` keyword.
+    >
+    > This is all to make the type hints situation a bit easier. It may need to
+    > change depending on how confusing it ends up being in practice.
+    >
+    > The equivalent method on `Config` is `Config.__call__` btw.
+    >
     """
     default = etc.as_option(kwds.pop("default", etc.Nada()))
     key = Key(*args, **kwds)
@@ -240,6 +255,9 @@ def get_pkg_scope(
     ```
     """
     return get_scope(Key(module_name).root)
+
+
+pkg = get_pkg_scope
 
 
 def changeset(*prefix: KeyMatter, **meta: Any) -> Changeset:

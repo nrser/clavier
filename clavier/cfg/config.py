@@ -267,6 +267,130 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
         except Exception as error:
             raise AttributeError(f"Not found: {repr(name)}") from error
 
+    # Call-Style Access
+    # ------------------------------------------------------------------------
+
+    @overload
+    def __call__(self, key: Key[T], /) -> T:
+        ...
+
+    @overload
+    def __call__(self, key: dict[KeyMatter, type[T]], /) -> T:
+        ...
+
+    @overload
+    def __call__(self, *key_parts: KeyMatter) -> Any:
+        ...
+
+    @overload
+    def __call__(self, *key_parts: KeyMatter, v_type: type[T]) -> T:
+        ...
+
+    @overload
+    def __call__(self, key: Key[T], /, *, default: T) -> T:
+        ...
+
+    @overload
+    def __call__(self, key: dict[KeyMatter, type[T]], /, *, default: T) -> T:
+        ...
+
+    @overload
+    def __call__(self, *key_parts: KeyMatter, default: Any) -> Any:
+        ...
+
+    @overload
+    def __call__(self, *key_parts: KeyMatter, default: T, v_type: type[T]) -> T:
+        ...
+
+    def __call__(self, *args, **kwds):
+        """Get a value from the `Config` by calling it like a function.
+
+        ##### Examples #####
+
+        Doin' it right. Result is typed (per PyLance at least).
+
+        ```python
+        >>> from clavier import cfg
+
+        >>> cfg.current("clavier.verbosity", v_type=int)
+        0
+
+        ```
+
+        Wrong type raises.
+
+        ```python
+        >>> cfg.current("clavier.verbosity", v_type=str)
+        Traceback (most recent call last):
+            ...
+        TypeError: expected config value clavier.verbosity to be str;
+            found int: 0
+
+        ```
+
+        Missing key raises.
+
+        ```python
+        >>> cfg.current("clavier.not_here", v_type=str)
+        Traceback (most recent call last):
+            ...
+        KeyError: "Config has no key or scope
+            Key('clavier.not_here', v_type=str)"
+
+        ```
+
+        Unless you provide a `default`.
+
+        ```python
+        >>> cfg.current("clavier.not_here", v_type=str, default="but I insist")
+        'but I insist'
+
+        ```
+
+        Defaults of the _wrong type_... work, I guess.
+
+        ```python
+        >>> cfg.current("clavier.not_here", v_type=int, default="but I insist")
+        'but I insist'
+
+        ```
+
+        By PyLance you'll type to `int | str`, which is interesting... but I
+        guess that's ok since you'll have to sort the union out to use the
+        value. Might actually be kinda nice with `default=None`, automatic
+        `typing.Optional`.
+
+        ##### Rationale #####
+
+        This would preferably be named 'get' (as the same functionality for the
+        global scope is with `clavier.cfg.get`), because that just feel like
+        what you _want_ to be doing, but `collections.abc.Mapping` specifies a
+        'get' method, and...
+
+        1.  I feel like it would be confusing to violate that API, as it's so
+            commonly used. It seems like an a-hole move to be _almost_ a
+            `collections.abc.Mapping`.
+
+        2.  Without violating that API (simply expanding it, as `__getitem__`
+            does, which seems more ok to me) the method would need to return an
+            implicit default of `None` when the key does not exist, and that's
+            a pain from a typing perspective.
+
+        So, I wanted something super-short for a name, and what's shorter than
+        _no name at all_? Feels like fun and functional too, reminds me of
+        Clojure or something that allows you to call maps with key to get
+        values.
+        """
+
+        default = etc.as_option(kwds.pop("default", etc.Nada()))
+        key = Key(*args, **kwds)
+
+        match default:
+            case etc.Nada():
+                return self[key]
+            case etc.Some():
+                return self.get(key, default.unwrap())
+
     # Multi-Key Access
     # ------------------------------------------------------------------------
 
