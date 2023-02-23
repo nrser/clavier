@@ -1,10 +1,9 @@
 from __future__ import annotations
 from contextvars import ContextVar
-from typing import Any, Literal, TypeVar, cast, overload
-
-from typeguard import check_type
+from typing import Any, Literal, TypeVar, overload
 
 from clavier import etc
+import splatlog
 
 from .config import Config, MutableConfig
 from .key import Key, KeyMatter
@@ -109,6 +108,14 @@ with GLOBAL.configure(SELF_ROOT_KEY, src=__file__) as clavier:
             formatter.min_width = 64
             formatter.invocation_ratio = 0.33
             formatter.indent = 2
+
+    with clavier.configure("srv") as srv:
+        with clavier.configure("server") as server:
+            with clavier.configure("log") as server_log:
+                server_log.level = splatlog.INFO
+                server_log.width = 80
+                server_log.force_terminal = True
+                server_log.color_system = "truecolor"
 
 
 # Convenience Functions

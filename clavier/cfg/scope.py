@@ -12,9 +12,7 @@ if TYPE_CHECKING:
 
 
 class Scope(Config):
-    """\
-    A small adapter providing read access to a particular scope of a Config.
-    """
+    """A small adapter providing read access to a particular scope of a Config."""
 
     _parent: Config
     _key: Key

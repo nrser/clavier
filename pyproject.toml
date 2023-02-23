@@ -53,11 +53,18 @@ watchfiles = "^0.18.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^5.2"
-black = "^22.3.0"
+black = "^23.1.0"
 novella = "^0.2.3"
 mkdocs = "^1.4.2"
 mkdocs-material = "^8.5.8"
 pydoc-markdown = "^4.6.3"
+
+[tool.poetry.group.dev.dependencies.docspec-python]
+# git = "https://github.com/nrser/docspec.git"
+# branch = "blib2to3"
+# subdirectory = "docspec-python"
+path = "../docspec/docspec-python"
+develop = true
 
 # `dr.t` command to run doctests
 [tool.poetry.group.dev.dependencies.doctor-testerson]

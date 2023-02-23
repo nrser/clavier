@@ -12,7 +12,7 @@ from doctor_genova import generate_api_pages, DrGenPreprocessor
 #     logging.getLogger("").setLevel(logging.DEBUG)
 #   }
 
-template "mkdocs"
+template "dr_gen_mkdocs"
 
 action "mkdocs-update-config" {
   site_name = "Calvier"
