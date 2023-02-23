@@ -13,6 +13,7 @@ from typing import (
 )
 from collections.abc import Mapping, Iterator, Callable, Iterable, KeysView
 
+import splatlog
 from splatlog.lib.typeguard import satisfies
 from splatlog.lib.text import fmt, fmt_type_of
 from rich.repr import RichReprResult
@@ -38,8 +39,11 @@ T_6 = TypeVar("T_6")
 T_7 = TypeVar("T_7")
 T_8 = TypeVar("T_8")
 
+_LOG = splatlog.get_logger(__name__)
+
 
 class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
+    """Universal interface for configuration objects."""
 
     # Internal API
     # ========================================================================
@@ -107,6 +111,7 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
     # ------------------------------------------------------------------------
 
     def env_has(self, key: Key) -> bool:
+        """Hey"""
         return key.env_name in os.environ
 
     def env_get(self, key: Key[T]) -> T:
@@ -256,6 +261,47 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
         raise KeyError(f"Config has no key or scope {repr(key)}")
 
+    @overload
+    def get(self, key: Key[T], /) -> T | None:
+        ...
+
+    @overload
+    def get(self, key: dict[KeyMatter, type[T]], /) -> T | None:
+        ...
+
+    @overload
+    def get(self, *key_parts: KeyMatter) -> Any:
+        ...
+
+    @overload
+    def get(self, *key_parts: KeyMatter) -> T | None:
+        ...
+
+    @overload
+    def get(self, key: Key[T], /, *, default: T) -> T:
+        ...
+
+    @overload
+    def get(self, key: dict[KeyMatter, type[T]], /, *, default: T) -> T:
+        ...
+
+    @overload
+    def get(self, *key_parts: KeyMatter, default: Any) -> Any:
+        ...
+
+    @overload
+    def get(self, *key_parts: KeyMatter, default: T) -> T:
+        ...
+
+    def get(self, __key, /, default=None):
+        try:
+            return self[__key]
+        except KeyError:
+            return default
+        except TypeError as error:
+            _LOG.warning(f"Bad key type? {error}")
+            return default
+
     # Attribute-Style Access
     # ------------------------------------------------------------------------
 
@@ -307,58 +353,92 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
 
         ##### Examples #####
 
-        Doin' it right. Result is typed (per PyLance at least).
+        1.  Doin' it right. Result is typed (per [PyLance][] at least).
 
-        ```python
-        >>> from clavier import cfg
+            [PyLance]: https://github.com/microsoft/pylance-release#readme
 
-        >>> cfg.current("clavier.verbosity", v_type=int)
-        0
+            ```python
+            >>> from clavier import cfg
 
-        ```
+            >>> cfg.current("clavier.verbosity", v_type=int)
+            0
 
-        Wrong type raises.
+            ```
 
-        ```python
-        >>> cfg.current("clavier.verbosity", v_type=str)
-        Traceback (most recent call last):
-            ...
-        TypeError: expected config value clavier.verbosity to be str;
-            found int: 0
+        2.  Wrong type raises.
 
-        ```
+            ```python
+            >>> cfg.current("clavier.verbosity", v_type=str)
+            Traceback (most recent call last):
+                ...
+            TypeError: expected config value clavier.verbosity to be str;
+                found int: 0
 
-        Missing key raises.
+            ```
 
-        ```python
-        >>> cfg.current("clavier.not_here", v_type=str)
-        Traceback (most recent call last):
-            ...
-        KeyError: "Config has no key or scope
-            Key('clavier.not_here', v_type=str)"
+        3.  Missing key raises.
 
-        ```
+            ```python
+            >>> cfg.current("clavier.not_here", v_type=str)
+            Traceback (most recent call last):
+                ...
+            KeyError: "Config has no key or scope
+                Key('clavier.not_here', v_type=str)"
 
-        Unless you provide a `default`.
+            ```
 
-        ```python
-        >>> cfg.current("clavier.not_here", v_type=str, default="but I insist")
-        'but I insist'
+        4.  Unless you provide a `default`.
 
-        ```
+            ```python
+            >>> cfg.current("clavier.not_here", v_type=str, default="but I insist")
+            'but I insist'
 
-        Defaults of the _wrong type_... work, I guess.
+            ```
 
-        ```python
-        >>> cfg.current("clavier.not_here", v_type=int, default="but I insist")
-        'but I insist'
+        5.  Defaults of the _wrong type_... work, I guess.
 
-        ```
+            ```python
+            >>> cfg.current("clavier.not_here", v_type=int, default="but I insist")
+            'but I insist'
 
-        By PyLance you'll type to `int | str`, which is interesting... but I
-        guess that's ok since you'll have to sort the union out to use the
-        value. Might actually be kinda nice with `default=None`, automatic
-        `typing.Optional`.
+            ```
+
+            In [PyLance][] the result will type as `int | str`, which is
+            interesting... but I guess that's ok since you'll have to sort the
+            union out to use the value. Might actually be kinda nice with
+            `default=None`: automatic `typing.Optional`!
+
+        6.  Key exists, key type is wrong, and a default was provided.
+
+            This is an interesting one. I _think_ should give you the default
+            back and drop a warning.
+
+            The use case is a setting or default that the user may override,
+            but you don't want to stop the show if they set a bad value.
+
+            Let's say I'm an app using the library, and I set a bad value for
+            `clavier.output`. It's supposed to be a `str`, but here I've
+            (mistakenly, I'm sure) set it to be a `list[int]`.
+
+            ```python
+            >>> my_cfg = cfg.Container(parent=cfg.current._get_parent_())
+            >>> with my_cfg.configure("clavier") as clavier:
+            ...     clavier.output = [1, 2, 3]
+
+            ```
+
+            As the library author, however, there are places I don't want to
+            fail due to the app's bad configuration value, so in addition to
+            the `v_type` I also provide a `default`.
+
+            ```python
+            >>> my_cfg("clavier.output", v_type=str, default="json")
+            'json'
+
+            ```
+
+            I feel like this goes with the `collections.abc.Mapping.get` vibe of
+            "don't raise during the normal course of business".
 
         ##### Rationale #####
 
@@ -478,7 +558,18 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
     def _extract_(self, *keys):
         """Extract up to 8 typed values in a single call.
 
-        All arguments must be a
+        ##### Examples #####
+
+        ```python
+        >>> from clavier import cfg
+
+        >>> backtrace, verbosity, output = cfg.current._extract_(
+        ...     ("clavier.backtrace", bool),
+        ...     ("clavier.verbosity", int),
+        ...     ("clavier.output", str),
+        ... )
+
+        ```
         """
         values = []
 
