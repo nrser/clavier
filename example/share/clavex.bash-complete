@@ -1,0 +1,3 @@
+# NOTE  Needs to be run from //example, at last at the moment
+
+eval "$(poetry run -- register-python-argcomplete clavex)"

@@ -1,4 +1,7 @@
-def add_to(subparsers):
+from clavier import arg_par
+
+
+def add_parser(subparsers: arg_par.Subparsers) -> None:
     parser = subparsers.add_parser(
         "cmd-with-sub-cmds",
         target=run,
