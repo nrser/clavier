@@ -2526,7 +2526,7 @@ test = ["flake8", "isort", "pytest"]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
@@ -2883,4 +2883,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "0a6fc965e1b2195a5c49c16eaac1477d2bc41ffa53c6c7b6c1f22de9810f1b88"
+content-hash = "ea42bbc06886a26ce4073776b50b1a98c00898d38de7ad511a8ea94fcc3e3b8f"
