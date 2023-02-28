@@ -111,10 +111,30 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
     # ------------------------------------------------------------------------
 
     def env_has(self, key: Key) -> bool:
-        """Hey"""
+        """Check if the environment (`os.environ`) has an entry for the `Key`.
+
+        > ❗❗ WARNING ❗❗
+        >
+        > In the case of a typed `Key` this method does _not_ check that the
+        > value is of the correct type or can be successfully cast, simply that
+        > it exists.
+
+        ##### See Also #####
+
+        1.  `Key.env_name`
+
+        """
         return key.env_name in os.environ
 
     def env_get(self, key: Key[T]) -> T:
+        """Get the value for a `Key` from the environment (`os.environ`). Raises
+        if the value can not be cast to the key type `T`.
+
+        ##### See Also #####
+
+        1.  `clavier.etc.env.get_as`
+
+        """
         return etc.env.get_as(key.env_name, key.v_type)
 
     # Scopes
