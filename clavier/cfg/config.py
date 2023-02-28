@@ -262,40 +262,28 @@ class Config(Mapping[KeyMatter, Any], metaclass=ABCMeta):
         raise KeyError(f"Config has no key or scope {repr(key)}")
 
     @overload
-    def get(self, key: Key[T], /) -> T | None:
+    def get(self, key: Key[T]) -> T | None:
         ...
 
     @overload
-    def get(self, key: dict[KeyMatter, type[T]], /) -> T | None:
+    def get(self, key: dict[KeyMatter, type[T]]) -> T | None:
         ...
 
     @overload
-    def get(self, *key_parts: KeyMatter) -> Any:
+    def get(self, key: KeyMatter) -> Any:
         ...
 
     @overload
-    def get(self, *key_parts: KeyMatter) -> T | None:
+    def get(self, key: Key[T], default: T) -> T:
         ...
 
     @overload
-    def get(self, key: Key[T], /, *, default: T) -> T:
+    def get(self, key: dict[KeyMatter, type[T]], default: T) -> T:
         ...
 
-    @overload
-    def get(self, key: dict[KeyMatter, type[T]], /, *, default: T) -> T:
-        ...
-
-    @overload
-    def get(self, *key_parts: KeyMatter, default: Any) -> Any:
-        ...
-
-    @overload
-    def get(self, *key_parts: KeyMatter, default: T) -> T:
-        ...
-
-    def get(self, __key, /, default=None):
+    def get(self, key, default=None):
         try:
-            return self[__key]
+            return self[key]
         except KeyError:
             return default
         except TypeError as error:
