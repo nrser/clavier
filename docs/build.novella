@@ -1,7 +1,18 @@
 import os
 import logging
+from pprint import pprint
 
 from doctor_genova import generate_api_pages, DrGenPreprocessor
+from docspec_python.namespace_packages import EXCLUDE_PATTERNS
+
+do
+  name: "configure"
+  closure: {
+    precedes "copy-files"
+  }
+  action: {
+    EXCLUDE_PATTERNS.extend(["/example/", "/dev/"])
+  }
 
 # do
 #   name: "debug-logging"

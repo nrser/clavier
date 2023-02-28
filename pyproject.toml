@@ -50,21 +50,9 @@ commonmark = "^0.9.0"
 markdown-it-py = "^2.1.0"
 watchfiles = "^0.18.1"
 
-
 [tool.poetry.group.dev.dependencies]
 pytest = "^5.2"
 black = "^23.1.0"
-novella = "^0.2.3"
-mkdocs = "^1.4.2"
-mkdocs-material = "^8.5.8"
-pydoc-markdown = "^4.6.3"
-
-[tool.poetry.group.dev.dependencies.docspec-python]
-# git = "https://github.com/nrser/docspec.git"
-# branch = "blib2to3"
-# subdirectory = "docspec-python"
-path = "../docspec/docspec-python"
-develop = true
 
 # `dr.t` command to run doctests
 [tool.poetry.group.dev.dependencies.doctor-testerson]
@@ -73,6 +61,8 @@ git = "https://github.com/nrser/doctor-testerson.git"
 # API documentation generation helpers
 [tool.poetry.group.dev.dependencies.doctor-genova]
 git = "https://github.com/nrser/doctor-genova.git"
+# path = "../doctor-genova"
+# develop = true
 
 [tool.poetry.group.notes.dependencies]
 jupyter = "^1.0.0"
