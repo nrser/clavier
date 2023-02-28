@@ -5,7 +5,8 @@ import splatlog
 
 from clavier import Sesh, etc
 
-NAME = __package__
+# NAME = __package__
+NAME = "clavex"
 WORK_DIR = Path(__file__).parents[1]
 
 _LOG = splatlog.get_logger(__name__)

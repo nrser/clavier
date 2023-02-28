@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "clavier-example"
+name = "clavex"
 version = "0.0.0"
 description = "Example stuff for Clavier package"
 authors = ["nrser <neil@neilsouza.com>"]
 readme = "README.md"
 packages = [
-  {include = "clavier_example"},
+  {include = "clavex"},
 ]
 
 [tool.poetry.dependencies]
@@ -17,7 +17,7 @@ argcomplete = ">=1.12.1,<2"
 clavier = {path = "..", develop = true}
 
 [tool.poetry.scripts]
-example = "clavier_example.__main__:main"
+clavex = "clavex.__main__:main"
 
 [build-system]
 requires = ["poetry-core"]
