@@ -8,4 +8,13 @@
   "python.analysis.diagnosticSeverityOverrides": {
     "reportShadowedImports": "none",
   },
+  
+  "rust-analyzer.linkedProjects": [
+    "entrypoint/Cargo.toml",
+  ],
+  "rust-analyzer.cargo.extraEnv": {
+    "ENTRYPOINT_START_CMD_JSON": "[\"poetry\", \"run\", \"cli\"]",
+    "ENTRYPOINT_PID_PATH": "fake-pid_path",
+    "ENTRYPOINT_SOCKET_PATH": "fake-socket_path",
+  }
 }
