@@ -210,7 +210,7 @@ class Sesh:
     ) -> Req:
         argv = sys.argv[1:] if argv is None else argv
 
-        self._log.debug("Parsing arguments...", argv=argv)
+        self._log.info("Parsing arguments...", argv=argv)
 
         with error_context("parsing arguments"):
             args = self.parser.parse_args(argv)
@@ -232,13 +232,15 @@ class Sesh:
         return self._context.run(self._handle, request)
 
     def _handle(self, request: Req) -> int:
+        self._log.info("Handling request...", request=request)
+
         with error_context(
             f"executing {etc.txt.fmt(request.target)}", expect_system_exit=True
         ):
             if request.is_async:
-                result = asyncio.run(request.target(**request.kwds))
+                result = asyncio.run(request())
             else:
-                result = request.target(**request.kwds)
+                result = request()
 
         view = result if isinstance(result, io.View) else io.View(result)
 

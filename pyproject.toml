@@ -57,7 +57,10 @@ black = "^23.1.0"
 
 # `dr.t` command to run doctests
 [tool.poetry.group.dev.dependencies.doctor-testerson]
-git = "https://github.com/nrser/doctor-testerson.git"
+version = "^0.1.0"
+# git = "https://github.com/nrser/doctor-testerson.git"
+# path = "../doctor-testerson"
+# develop = true
 
 # API documentation generation helpers
 [tool.poetry.group.dev.dependencies.doctor-genova]

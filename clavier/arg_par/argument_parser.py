@@ -9,7 +9,6 @@ from typing import (
     NoReturn,
     Sequence,
     TypeGuard,
-    cast,
 )
 import argparse
 from pathlib import Path
@@ -28,9 +27,21 @@ from .formatters import RichHelpFormatter
 from .arg_par_helpers import DEFAULT_HOOK_NAMES, has_hook, invoke_hook
 from .subparsers import Subparsers
 
-
+#: A target is a `typing.Callable` that handles requests for an `ArgumentParser`
+#: instance.
+#:
+#: It is analogous to a request handler function in an HTTP server, while the
+#: parser to which the target belongs can be compared to a route that maps
+#: requests to a handler.
+#:
+#: Part of Clavier's `ArgumentParser` extension is that all parsers have a
+#: target. If the app doesn't define a target for a parer it defaults to
+#: `ArgumentParser.no_target`, which prints the help dialog.
+#:
 Target = Callable[..., Any]
 
+#: The attribute name used to store and retreive the _target_ function
+#: in an `argparse.ArgumentParser`'s _defaults_ and parsed `argparse.Namespace`.
 TARGET_NAME = "__target__"
 
 

@@ -82,7 +82,7 @@ class Key(Sequence[str], Generic[T]):
 
     ```python
     >>> Key(Key(), "a.b")
-    Key('a', 'b')
+    Key('a.b')
 
     ```
 
@@ -96,13 +96,13 @@ class Key(Sequence[str], Generic[T]):
     >>> Key(".a.b")
     Traceback (most recent call last):
         ...
-    ValueError: each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+    ValueError: each segment in a `key` must full-match [A-Za-z_][A-Za-z0-9_]*,
         found '' in '.a.b'
 
     >>> Key("a..b")
     Traceback (most recent call last):
         ...
-    ValueError: each segment in a `key` must full-match [A-Za-z][A-Za-z0-9_]*,
+    ValueError: each segment in a `key` must full-match [A-Za-z_][A-Za-z0-9_]*,
         found '' in 'a..b'
 
     ```
@@ -419,10 +419,13 @@ class Key(Sequence[str], Generic[T]):
         "Key('a')"
 
         >>> repr(Key("a.b.c"))
-        "Key('a', 'b', 'c')"
+        "Key('a.b.c')"
 
         ```
         """
+        if not self._parts:
+            return f"{self.__class__.__name__}()"
+
         s = repr(str(self))
 
         if self._v_type is not Any:
@@ -502,13 +505,13 @@ class Key(Sequence[str], Generic[T]):
 
         ```python
         >>> Key("a.b") / "c"
-        Key('a', 'b', 'c')
+        Key('a.b.c')
 
         >>> Key("a.b") / "c.d" / "e"
-        Key('a', 'b', 'c', 'd', 'e')
+        Key('a.b.c.d.e')
 
         >>> Key("a.b") / Key("c.d")
-        Key('a', 'b', 'c', 'd')
+        Key('a.b.c.d')
 
         ```
         """
@@ -522,10 +525,10 @@ class Key(Sequence[str], Generic[T]):
 
         ```python
         >>> "a.b" / Key("c")
-        Key('a', 'b', 'c')
+        Key('a.b.c')
 
         >>> "a.b" / Key("c", v_type=int)
-        Key('a', 'b', 'c', v_type=int)
+        Key('a.b.c', v_type=int)
 
         ```
         """
@@ -571,8 +574,8 @@ class Key(Sequence[str], Generic[T]):
         ```python
         >>> list(Key("a.b.c.d").scopes())
         [Key('a', v_type=Scope),
-            Key('a', 'b', v_type=Scope),
-            Key('a', 'b', 'c', v_type=Scope)]
+            Key('a.b', v_type=Scope),
+            Key('a.b.c', v_type=Scope)]
 
         ```
 
@@ -634,10 +637,10 @@ class Key(Sequence[str], Generic[T]):
 
         ```python
         >>> Key("a.b").append("c")
-        Key('a', 'b', 'c')
+        Key('a.b.c')
 
         >>> Key("a.b").append("c.d", "e")
-        Key('a', 'b', 'c', 'd', 'e')
+        Key('a.b.c.d.e')
 
         ```
 
@@ -650,13 +653,13 @@ class Key(Sequence[str], Generic[T]):
         typing.Any
 
         >>> Key("a.b").append(Key("c", v_type=int))
-        Key('a', 'b', 'c', v_type=int)
+        Key('a.b.c', v_type=int)
 
         >>> Key("a.b").append("c.d", "e", v_type=int)
-        Key('a', 'b', 'c', 'd', 'e', v_type=int)
+        Key('a.b.c.d.e', v_type=int)
 
         >>> Key("a.b").append({('c.d', 'e'): int})
-        Key('a', 'b', 'c', 'd', 'e', v_type=int)
+        Key('a.b.c.d.e', v_type=int)
 
         ```
 
@@ -681,10 +684,10 @@ class Key(Sequence[str], Generic[T]):
 
         ```python
         >>> Key("c.d").prepend("a.b")
-        Key('a', 'b', 'c', 'd')
+        Key('a.b.c.d')
 
         >>> Key("d").prepend(Key("a"), Key("b.c"))
-        Key('a', 'b', 'c', 'd')
+        Key('a.b.c.d')
 
         ```
         """

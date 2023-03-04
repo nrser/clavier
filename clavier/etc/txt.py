@@ -116,45 +116,63 @@ def fmt_cmd(
     return "\n".join(lines)
 
 
-def coordinate(
+def conjoin(
     seq: Sequence,
     conjunction: str,
     *,
     to_s: Callable[[Any], str] = fmt,
     sep: str = ",",
 ) -> str:
-    """\
-    Examples:
+    """
+    ##### Examples #####
 
     1.  Empty list
 
-        >>> fmt_list([])
+        ```python
+        >>> conjoin([], "and")
         '[empty]'
+
+        ```
 
     2.  List with a single item
 
-        >>> fmt_list([1])
+        ```python
+        >>> conjoin([1], "and")
         '1'
+
+        ```
 
     3.  List with two items
 
-        >>> fmt_list([1, 2])
+        ```python
+        >>> conjoin([1, 2], "and")
         '1 and 2'
+
+        ```
 
     4.  List with more than two items
 
-        >>> fmt_list([1, 2, 3])
+        ```python
+        >>> conjoin([1, 2, 3], "and")
         '1, 2 and 3'
+
+        ```
 
     5.  Defaults to `repr` to cast to string
 
-        >>> fmt_list(['a', 'b', 'c'])
+        ```python
+        >>> conjoin(['a', 'b', 'c'], "and")
         "'a', 'b' and 'c'"
+
+        ```
 
     6.  Providing an alternative cast function
 
-        >>> fmt_list(['a', 'b', 'c'], lambda x: f"`{x}`")
+        ```python
+        >>> conjoin(['a', 'b', 'c'], "and", to_s=lambda x: f"`{x}`")
         '`a`, `b` and `c`'
+
+        ```
     """
     length = len(seq)
     if length == 0:

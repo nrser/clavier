@@ -9,7 +9,7 @@ from socketserver import UnixStreamServer, ForkingMixIn
 import threading
 from time import monotonic_ns, perf_counter, sleep
 from types import FrameType
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 
 from watchfiles import Change, watch
@@ -78,6 +78,20 @@ class Server(ForkingMixIn, UnixStreamServer):
     _log = splatlog.LoggerProperty()
 
     @classmethod
+    def takeover(cls, config: Config) -> NoReturn:
+        """ "Takeover" the current process to start the server. Just calls
+        `create` and exits. The server itself spawns-off as a daemon via the
+        ol' double-fork process.
+
+        I'm not sure about the name of this function... it mirrors
+        `Sesh.takeover`, but makes less sense in this case I think. I added it
+        because I had a bug where I thought `create` was `typing.NoReturn`, but
+        it wasn't.
+        """
+        cls.create(config)
+        sys.exit(0)
+
+    @classmethod
     def create(cls, config: Config) -> None:
         # Kill the server if it's already running
         cls.destroy(config)
@@ -85,7 +99,8 @@ class Server(ForkingMixIn, UnixStreamServer):
         try:
             pid = os.fork()
             if pid:
-                return
+                # Original calling process
+                sys.exit(0)
         except OSError as e:
             sys.stderr.write(
                 "fork #1 failed: %d (%s)\n" % (e.errno, e.strerror)

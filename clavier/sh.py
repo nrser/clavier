@@ -23,7 +23,7 @@ from typing import (
 
 import splatlog
 
-from . import cfg
+from . import cfg, etc
 from .io import OUT, ERR, fmt, fmt_cmd
 from .etc.ins import accepts_kwd
 
@@ -109,7 +109,7 @@ CompletedProcess = subprocess.CompletedProcess
 def render_path(path: Path, rel_to: Path | None) -> str:
     if rel_to is None:
         return str(path)
-    return str(path.relative_to(rel_to))
+    return str(etc.path.try_rel(path, rel_to))
 
 
 def _iter_opt(

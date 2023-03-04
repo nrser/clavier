@@ -18,14 +18,16 @@ class Changeset(Config):
     Intended use:
 
     ```python
-    >>> from clavier import CFG
-    >>> with CFG.configure("stats.doctest", src=__file__) as c:
+    >>> from clavier import cfg
+
+    >>> my_cfg = cfg.Container(parent=cfg.current._get_parent_())
+    >>> with my_cfg.configure("stats.doctest", src=__file__) as c:
     ...     c.x = "ex"
     ...     c.y = "why?"
     ...
-    >>> CFG.stats.doctest.x
+    >>> my_cfg.stats.doctest.x
     'ex'
-    >>> CFG.stats.doctest.y
+    >>> my_cfg.stats.doctest.y
     'why?'
 
     ```

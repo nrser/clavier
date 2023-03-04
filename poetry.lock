@@ -740,23 +740,20 @@ resolved_reference = "a25a3c568886158403abb5eb1a1fa3a15c76f811"
 
 [[package]]
 name = "doctor-testerson"
-version = "0.1.0a0"
+version = "0.1.0"
 description = "Provides a stupid little `dr.t` command to run Python doctests."
 category = "dev"
 optional = false
-python-versions = "^3.8"
-files = []
-develop = false
+python-versions = ">=3.10,<4.0"
+files = [
+    {file = "doctor_testerson-0.1.0-py3-none-any.whl", hash = "sha256:425ff107e01907093058247c868740fb119c48daebd3446fe2675e4222c2964a"},
+    {file = "doctor_testerson-0.1.0.tar.gz", hash = "sha256:60313a208bf736b0b01eda7387e39c6355f46f0e032a7e3b58b1c009ecaac9f4"},
+]
 
 [package.dependencies]
-Pint = "^0.19.2"
+Pint = ">=0.19.2,<0.20.0"
 rich = ">=9"
-
-[package.source]
-type = "git"
-url = "https://github.com/nrser/doctor-testerson.git"
-reference = "HEAD"
-resolved_reference = "9fb47ad5463760d950f90f6ce521267aa67e0b0d"
+tomli = ">=2.0.1,<3.0.0"
 
 [[package]]
 name = "executing"
@@ -2883,4 +2880,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "ea42bbc06886a26ce4073776b50b1a98c00898d38de7ad511a8ea94fcc3e3b8f"
+content-hash = "8d4652455fc76363ad9f247fbbf1c33aee44a946d033b7b56ef022ce680f5323"

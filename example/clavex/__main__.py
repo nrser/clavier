@@ -28,7 +28,7 @@ def main():
     if etc.env.get_bool("CLAVIER_SRV"):
         from clavier.srv import Config, Server
 
-        Server.create(
+        Server.takeover(
             Config(
                 name=NAME,
                 work_dir=WORK_DIR,

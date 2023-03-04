@@ -1,16 +1,11 @@
-from typing import Union, Literal, NewType, Any
+from typing import Callable, TypeGuard, TypeVar
 
-Null = NewType("Null", Union[None, Literal[False]])  # type: ignore
 
-def is_null(x: Any) -> bool:
-    """
-    >>> is_nope(None)
-    True
+T = TypeVar("T")
 
-    >>> is_nope(False)
-    True
 
-    >>> any(is_nope(x) for x in ('', [], {}, 0, 0.0))
-    False
-    """
-    return x is None or x is False
+def instance_guard(t: type[T]) -> Callable[[object], TypeGuard[T]]:
+    def isinstance_guard(x: object) -> TypeGuard[T]:
+        return isinstance(x, t)
+
+    return isinstance_guard
