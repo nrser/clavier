@@ -10,7 +10,7 @@ from typing import (
 )
 
 from splatlog.lib.collections import find
-from more_itertools import intersperse
+from more_itertools import intersperse, collapse
 
 T = TypeVar("T")
 V = TypeVar("V")
@@ -41,3 +41,8 @@ def filtered(
 
 def filtered(predicate, iterable):
     return list(filter(predicate, iterable))
+
+
+def append(iterable: Iterable[T], item: T) -> Iterable[T]:
+    yield from iterable
+    yield item

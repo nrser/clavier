@@ -1,5 +1,4 @@
-"""\
-I *hate* writing modules like this... but, I always seem to end up with one
+"""I *hate* writing modules like this... but, I always seem to end up with one
 after some amount of time.
 
 They're never what I want, maybe because what I want is to not have to write
@@ -18,23 +17,31 @@ on anything outside the standard library, and should probably stay that way.
 >
 > This module is used in already bad situations, like formatting error messages.
 >
-> As such, it must **_NOT_** depend on any other parts of the package, and
-> it must **_NOT_** raise exceptions unless there is a logic error that needs
-> to be fixed.
+> As such, it must **_NOT_** depend on any parts of the package outside
+> `clavier.etc`, and it must **_NOT_** raise exceptions unless there is a logic
+> error that needs to be fixed.
 >
 """
 
-from typing import Sequence, Callable, Any, Iterable, Union
+from typing import Callable, Any, Iterable, Union
 from pathlib import Path
 import shlex
 import os
 import re
 
 import splatlog.lib.text
+from splatlog.lib.text import (
+    FmtOpts,
+    fmt as splat_fmt,
+)
 
 from rich.console import Console
 from rich.pretty import Pretty
 from rich.padding import Padding
+
+from more_itertools import intersperse, collapse
+
+from .iter import append
 
 _CONSOLE = Console(
     file=open(os.devnull, "w"),
@@ -79,14 +86,14 @@ def squish(string: str) -> str:
     return _SQUISH_RE.sub(" ", string).strip()
 
 
+def tick(value) -> str:
+    return "`" + str(value) + "`"
+
+
 def fmt_pretty(obj: object) -> str:
     with _CONSOLE.capture() as capture:
         _CONSOLE.print(Padding(Pretty(obj), (0, 4)))
     return capture.get()
-
-
-def tick(value) -> str:
-    return f"`{value}`"
 
 
 def fmt_class(cls) -> str:
@@ -116,69 +123,152 @@ def fmt_cmd(
     return "\n".join(lines)
 
 
-def conjoin(
-    seq: Sequence,
-    conjunction: str,
-    *,
+@FmtOpts.provide
+def fmt(x: Any, opts: FmtOpts[str]) -> str:
+    match x:
+        case str(s):
+            return s
+        case Path() as path:
+            return fmt_path(path)
+        case other:
+            return splat_fmt(other)
+
+
+def join(
+    *iterable: Any,
+    seperator: str = ", ",
+    coordinator: str | None = " and ",
     to_s: Callable[[Any], str] = fmt,
-    sep: str = ",",
+    oxford: bool = False,
+    empty: str = "",
 ) -> str:
     """
+    Joins items into a textual list suitable for prose, including a
+    [coordinating conjunction][] between the last two items (_penultimate_ and
+    _ultimate_), should there be two or more.
+
+    [coordinating conjunction]: https://en.wikipedia.org/wiki/Conjunction_(grammar)#Coordinating_conjunctions
+
+    Hilariously, this function _is not even used_ at this time, but I wrote it
+    at some point, and fixed it at another, and wished it was there more times
+    than I'd like to admit, so here it is, may it be remembered and used.
+
     ##### Examples #####
 
-    1.  Empty list
+    1.  Common use case.
 
         ```python
-        >>> conjoin([], "and")
-        '[empty]'
+        >>> join("a", "b", "c")
+        'a, b and c'
 
         ```
 
-    2.  List with a single item
+    2.  `iterable` is processed with `more_itertools.collapse`, allowing
+        nesting.
 
         ```python
-        >>> conjoin([1], "and")
-        '1'
+        >>> join("a", ("b", "c"), (c for c in "def"))
+        'a, b, c, d, e and f'
 
         ```
 
-    3.  List with two items
+    3.  Switch the [coordinating conjunction][]. Note that you need to add
+        spaces around it if you want to have spaces around it in the output.
 
         ```python
-        >>> conjoin([1, 2], "and")
-        '1 and 2'
+        >>> join("a", "b", "c", coordinator=" or ")
+        'a, b or c'
 
         ```
 
-    4.  List with more than two items
+        You can omit the penultimate/ultimate coordinator as well
 
         ```python
-        >>> conjoin([1, 2, 3], "and")
-        '1, 2 and 3'
+        >>> join("a", "b", "c", coordinator=None)
+        'a, b, c'
 
         ```
 
-    5.  Defaults to `repr` to cast to string
+    4.  Switch the seperator. Note that you need to add a trailing space if you
+        want them to be there in the output.
 
         ```python
-        >>> conjoin(['a', 'b', 'c'], "and")
+        >>> join("a", "b", "c", "d", seperator="、 ")
+        'a、 b、 c and d'
+
+        ```
+
+    5.  Use an "oxford"-style seperator before the coordinating conjunction (
+        techincally, this is called the [serial comma][] but I'll never
+        remember that).
+
+        ```python
+        >>> join("a", "b", "c", oxford=True)
+        'a, b, and c'
+
+        ```
+
+        [serial comma]: https://en.wikipedia.org/wiki/Serial_comma
+
+    6.  Change the `to_s` function that converts item to strings (default is
+        `fmt`).
+
+        ```python
+        >>> join("a", "b", "c", to_s=repr)
         "'a', 'b' and 'c'"
 
         ```
 
-    6.  Providing an alternative cast function
+    7.  Empty list return the `empty` argument, which defaults to the empty
+        string.
 
         ```python
-        >>> conjoin(['a', 'b', 'c'], "and", to_s=lambda x: f"`{x}`")
-        '`a`, `b` and `c`'
+        >>> empty_list = []
+
+        >>> join(empty_list)
+        ''
+
+        >>> join(empty_list, empty="(none)")
+        '(none)'
+
+        ```
+
+    8.  List with a single item just applies `to_s` to it.
+
+        ```python
+        >>> join(1)
+        '1'
+
+        ```
+
+    9.  List with just two items joins them with the `coordinator`.
+
+        ```python
+        >>> join(1, 2)
+        '1 and 2'
 
         ```
     """
-    length = len(seq)
-    if length == 0:
-        return "[empty]"
-    if length == 1:
-        return to_s(seq[0])
-    return f" {conjunction} ".join(
-        (f"{sep} ".join(map(to_s, seq[0:-1])), to_s(seq[-1]))
-    )
+    if coordinator is None:
+        return seperator.join(to_s(i) for i in collapse(iterable))
+
+    items = list(collapse(iterable))
+
+    match items:
+        case []:
+            return empty
+        case [only]:
+            return to_s(only)
+        case [penult, utl]:
+            return to_s(penult) + coordinator + to_s(utl)
+        case [*rest, penult, utl]:
+            return seperator.join(
+                append(
+                    (to_s(i) for i in rest),
+                    to_s(penult)
+                    + (seperator if oxford else "")
+                    + coordinator
+                    + to_s(utl),
+                )
+            )
+    assert False, "unreachable"

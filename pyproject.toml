@@ -42,17 +42,24 @@ sortedcontainers = ">=2.3.0,<3"
 
 # Logging
 splatlog = ">=0.3.1"
+
+# Actually just used to parse env variable values
 pyyaml = ">=5"
+
+# Usefull helpers
 more-itertools = "^9.0.0"
 
 # Parsing Markdown. Dependency of `rich` already
 commonmark = "^0.9.0"
 markdown-it-py = "^2.1.0"
+
+# Used to watch for changes in server-mode
 watchfiles = "^0.18.1"
+
+# Used to parse Cargo config files
 tomli = "^2.0.1"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^5.2"
 black = "^23.1.0"
 
 # `dr.t` command to run doctests

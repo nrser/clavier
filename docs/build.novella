@@ -4,6 +4,7 @@ from pprint import pprint
 
 from doctor_genova import generate_api_pages, DrGenPreprocessor
 from docspec_python.namespace_packages import EXCLUDE_PATTERNS
+from clavier._docs import MoreItertoolsResolver
 
 do
   name: "configure"
@@ -32,7 +33,11 @@ action "mkdocs-update-config" {
 }
 
 action "preprocess-markdown" {
-  use DrGenPreprocessor(self, "doctor-genova")
+  use DrGenPreprocessor(
+    self,
+    "doctor-genova",
+    (MoreItertoolsResolver(),)
+  )
   depends_on "generate-api-pages"
 }
 
