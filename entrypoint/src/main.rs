@@ -5,6 +5,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::prelude::*;
+use std::os::unix::process::CommandExt;
 use std::os::{fd::AsRawFd, fd::RawFd};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -106,13 +107,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let handler = SigHandler::Handler(handle_sigint);
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
-    let mut buffer: [u8; 4] = [0, 0, 0, 0];
+    let mut length_buffer: [u8; 4] = [0, 0, 0, 0];
     let mut got_it: bool = false;
 
     stream.set_nonblocking(true)?;
 
     while !got_it {
-        match stream.read_exact(&mut buffer) {
+        match stream.read_exact(&mut length_buffer) {
             Ok(_) => got_it = true,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 if SIGNALED.load(Ordering::Relaxed) == true {
@@ -125,7 +126,46 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let exit_status: i32 = i32::from_ne_bytes(buffer);
+    let response_length: i32 = i32::from_ne_bytes(length_buffer);
 
-    process::exit(exit_status);
+    debug!("Read response size {:?}", response_length);
+
+    let mut response_buffer: Vec<u8> = std::iter::repeat(0u8)
+        .take(response_length.try_into().unwrap())
+        .collect::<Vec<_>>();
+
+    stream.set_nonblocking(false)?;
+    stream.read_exact(&mut response_buffer)?;
+
+    debug!("Read response bytes: {:?}", response_buffer);
+
+    let response: server::Response = serde_json::from_slice(&response_buffer)?;
+
+    debug!("Parsed response {:?}", response);
+
+    match response.replace_process {
+        Some(rp) => {
+            let mut command = process::Command::new(rp.program);
+
+            if let Some(env) = rp.env {
+                command.envs(env);
+            }
+
+            if let Some(args) = rp.args {
+                command.args(args);
+            }
+
+            if let Some(cwd) = rp.cwd {
+                command.current_dir(cwd);
+            }
+
+            command.exec();
+
+            Ok(())
+        }
+        None => {
+            debug!("Exiting with status {:?}", response.exit_status);
+            process::exit(response.exit_status);
+        }
+    }
 }

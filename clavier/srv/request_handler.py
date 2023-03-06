@@ -1,6 +1,8 @@
 from __future__ import annotations
+from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import pickle
 import signal
 import socket
@@ -8,12 +10,13 @@ from socketserver import BaseRequestHandler
 import sys
 import threading
 from time import monotonic_ns
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypedDict
 
 import splatlog
 from rich.console import Console
 
 from .config import INT_STRUCT
+from clavier import err
 
 if TYPE_CHECKING:
     from .server import Server
@@ -29,6 +32,31 @@ class Request(NamedTuple):
     t_start_ns: int
 
 
+class ReplaceProcess(TypedDict):
+    env: dict[str, str] | None
+    cwd: str | None
+    program: str
+    args: list[str] | None
+
+
+@dataclass
+class Response:
+    exit_status: int
+    replace_process: ReplaceProcess | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "exit_status": self.exit_status,
+            "replace_process": self.replace_process,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.to_json(), encoding="utf-8")
+
+
 class RequestHandler(BaseRequestHandler):
     _log = splatlog.LoggerProperty()
 
@@ -39,9 +67,12 @@ class RequestHandler(BaseRequestHandler):
     _cwd: str | None = None
     _env: dict[str, str] | None = None
     _argv: list[str] | None = None
-    _exit_status: int = 0
+    _response: Response
     _done_event: threading.Event | None = None
     _thread: threading.Thread | None = None
+
+    def setup(self) -> None:
+        self._response = Response(exit_status=0)
 
     @property
     def _splatlog_self_(self):
@@ -223,7 +254,7 @@ class RequestHandler(BaseRequestHandler):
                 )
 
         self._log.debug(f"Starting CLI...")
-        self._exit_status = sesh.execute()
+        self._response.exit_status = sesh.execute()
 
     def handle(self) -> None:
         t_start_ns = monotonic_ns()
@@ -237,9 +268,17 @@ class RequestHandler(BaseRequestHandler):
                 case None:
                     pass
                 case int(i):
-                    self._exit_status = i
+                    self._response.exit_status = i
                 case str(s):
-                    self._exit_status = 1
+                    self._response.exit_status = 1
+
+        except err.ReplaceProcess as replace_process:
+            self._response.replace_process = ReplaceProcess(
+                program=replace_process.program,
+                args=replace_process.args,
+                cwd=replace_process.cwd,
+                env=replace_process.env,
+            )
 
         except BaseException:
             message = "Error raised while handling request"
@@ -263,7 +302,7 @@ class RequestHandler(BaseRequestHandler):
             except:
                 pass
 
-            self._exit_status = 1
+            self._response.exit_status = 1
 
         finally:
             if done_event := self._done_event:
@@ -280,13 +319,20 @@ class RequestHandler(BaseRequestHandler):
             except:
                 self._log.exception("Failed to un-set stdio!")
 
-            exit_status_bytes = INT_STRUCT.pack(self._exit_status)
+            response_json = self._response.to_json()
+            response_bytes = bytes(response_json, encoding="utf-8")
+            response_size = len(response_bytes)
+
+            self.request.socket.send(INT_STRUCT.pack(response_size))
+            self.request.socket.send(response_bytes)
+
             self._log.debug(
-                f"Sending exit status...",
-                exit_status=self._exit_status,
-                exit_status_bytes=exit_status_bytes,
+                f"Sent response",
+                response=self._response,
+                json=response_json,
+                size=response_size,
+                bytes=response_bytes.hex(),
             )
-            self.request.socket.send(exit_status_bytes)
 
             t_end_ns = monotonic_ns()
             handle_ms = (t_end_ns - t_start_ns) // MS_TO_NS
@@ -295,7 +341,7 @@ class RequestHandler(BaseRequestHandler):
             self._log.info(
                 "Request handled",
                 args=self.args,
-                exit_status=self._exit_status,
+                exit_status=self._response.exit_status,
                 handle_ms=handle_ms,
                 total_ms=total_ms,
             )

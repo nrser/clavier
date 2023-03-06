@@ -23,7 +23,7 @@ from typing import (
 
 import splatlog
 
-from . import cfg, etc
+from . import cfg, etc, err
 from .io import OUT, ERR, fmt, fmt_cmd
 from .etc.ins import accepts_kwd
 
@@ -487,6 +487,16 @@ def replace(
     env: Mapping | None = None,
     **opts,  # Unused
 ) -> NoReturn:
+    """Replace the current process with a new command.
+
+    This uses the "exec" family of functions under-the-hood: `os.execv`,
+    `os.execvp` and `os.execvpe`. All of Clavier is "Unix-only", but it may be
+    worth noting that this functionality is specific to Unix.
+
+    In the case that the app is running in server process (`clavier.srv`), this
+    command will
+    """
+
     # https://docs.python.org/3.9/library/os.html#os.execl
     for console in (OUT, ERR):
         console.file.flush()
@@ -504,19 +514,27 @@ def replace(
         cwd=cwd,
     )
 
-    if cwd is not None:
-        os.chdir(cwd)
+    program, *args = cmd
+    raise err.ReplaceProcess(
+        program=str(program),
+        args=[str(arg) for arg in args],
+        cwd=None if cwd is None else str(cwd),
+        env=None if env is None else {str(k): str(v) for k, v in env.items()},
+    )
 
-    if env is None:
-        if isabs(cmd[0]):
-            os.execv(cmd[0], cmd)
-        else:
-            os.execvp(proc_name, cmd)
-    else:
-        if isabs(cmd[0]):
-            os.execve(cmd[0], cmd, env)
-        else:
-            os.execvpe(proc_name, cmd, env)
+    # if cwd is not None:
+    #     os.chdir(cwd)
+
+    # if env is None:
+    #     if isabs(cmd[0]):
+    #         os.execv(cmd[0], cmd)
+    #     else:
+    #         os.execvp(proc_name, cmd)
+    # else:
+    #     if isabs(cmd[0]):
+    #         os.execve(cmd[0], cmd, env)
+    #     else:
+    #         os.execvpe(proc_name, cmd, env)
 
 
 def file_absent(path: Path, name: str | None = None):

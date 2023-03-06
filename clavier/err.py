@@ -1,4 +1,5 @@
-from typing import Any
+from pathlib import Path
+from typing import Any, Mapping
 
 from . import etc
 
@@ -75,3 +76,36 @@ class ParserExit(SystemExit, ClavierError):
     @property
     def message(self) -> Any:
         return self.args[1]
+
+
+class ReplaceProcess(BaseException):
+    """Raised when the application wants to swap the current process out for
+    a new one.
+
+    This would normally be accomplish by calling one of the _exec_ family of
+    functions (`os.execv`, `os.execve` or `os.execvp`), which would replace the
+    process on the spot using a syscall. However, when the app is running in
+    client/server mode (via `clavier.srv`) we want to replace the client process
+    but are executing in a server process.
+
+    In that situation, the server instead sends a special response to the client
+    telling it to replace itself.
+    """
+
+    program: str
+    args: list[str] | None
+    cwd: str | None
+    env: dict[str, str] | None
+
+    def __init__(
+        self,
+        program: str,
+        args: list[str] | None,
+        cwd: str | None,
+        env: dict[str, str] | None,
+    ):
+        super().__init__()
+        self.program = program
+        self.args = args
+        self.cwd = cwd
+        self.env = env

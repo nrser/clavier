@@ -27,6 +27,20 @@ struct StartCmd {
     args: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ReplaceProcess {
+    pub env: Option<HashMap<String, String>>,
+    pub cwd: Option<String>,
+    pub program: String,
+    pub args: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response {
+    pub exit_status: i32,
+    pub replace_process: Option<ReplaceProcess>,
+}
+
 // Public API
 // ===========================================================================
 

@@ -58,6 +58,7 @@ watchfiles = "^0.18.1"
 
 # Used to parse Cargo config files
 tomli = "^2.0.1"
+msgpack = "^1.0.4"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"

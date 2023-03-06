@@ -323,6 +323,10 @@ class Sesh:
                     io.views.ParserExitView(self, error, context_message)
                 )
 
+            case err.ReplaceProcess():
+                self._log.debug("HERE!!!")
+                raise
+
             case SystemExit():
                 if not expect_system_exit:
                     level = (
