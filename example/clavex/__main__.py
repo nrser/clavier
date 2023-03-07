@@ -5,8 +5,7 @@ import splatlog
 
 from clavier import App, etc
 
-# NAME = __package__
-NAME = "clavex"
+NAME = __package__
 WORK_DIR = Path(__file__).parents[1]
 
 _LOG = splatlog.get_logger(__name__)
@@ -16,11 +15,10 @@ def get_app() -> App:
     from . import cmd
 
     return App(
-        pkg_name=NAME,
+        name=NAME,
         description="Clavier example CLI",
         cmds=cmd,
         autocomplete=False,
-        prog_name=NAME,
     )
 
 

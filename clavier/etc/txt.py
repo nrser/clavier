@@ -23,6 +23,7 @@ on anything outside the standard library, and should probably stay that way.
 >
 """
 
+from functools import reduce
 from typing import Callable, Any, Iterable, Union
 from pathlib import Path
 import shlex
@@ -55,6 +56,219 @@ fmt_type_of = splatlog.lib.text.fmt_type_of
 
 _SQUISH_RE = re.compile(r"\s+")
 
+#: The character used to separate _identifiers_ in a
+IDENTIFIER_SEPERATOR = "."
+
+#: Patterns and replacements used in `as_snake_case`. They are applied in-order.
+_SNAKE_CASE_SUBS = (
+    # Adapted from
+    #
+    # https://stackoverflow.com/a/1176023
+    #
+    # Added annotations and adaptation descriptions.
+    #
+    # This generally matched the start of camel-case words, except at the
+    # begining of the string. Modified to _not_ insert that underscore if the
+    # previous character is '.' or '_'.
+    (re.compile(r"([^\._])([A-Z][a-z]+)"), r"\1_\2"),
+    # This cleans up multi-underscore runs that happen before a cammel word
+    # start?
+    (re.compile(r"__([A-Z])"), r"_\1"),
+    # This is kinda the reverse of the first one, probably needed due to
+    # non-overlapping behavior of `re.sub`?
+    (re.compile(r"([a-z0-9])([A-Z])"), r"\1_\2"),
+    # Our addition — convert '-' runs to a single '_'
+    (re.compile(r"(\-+)"), "_"),
+)
+
+_ENV_NAME_SUBS = (
+    # Trim anything we can't use from the start (don't create leading '_')
+    (re.compile(r"^[^A-Za-z0-9_]+"), ""),
+    # Trim anything we can't use from the end (don't create trailing '_')
+    (re.compile(r"[^A-Za-z0-9_]+$"), ""),
+    # Replace any runs we can't use with a single '_'
+    (re.compile(r"[^A-Za-z0-9_]+"), "_"),
+)
+
+
+def as_snake_case(name: str) -> str:
+    """Convert a `str` to "snake-case" — lower-case, underscore-separated. The
+    general form for Python function and variable names.
+
+    > 📝 NOTE
+    >
+    > To some extent this operation is not well-defined, and in some cases it
+    > requires grammatical understanding of the `name` content to "get it
+    > right".
+    >
+    > This (partial) solution seems about as good-as-it-gets for a simple
+    > implementation (it's a few lines, stdlib).
+    >
+    > Adapted from a response to a Stack Overflow question (multiple authors),
+    > see
+    >
+    > https://stackoverflow.com/a/1176023
+
+    ##### 🏗 Examples #####
+
+    1.  From "cammel-case".
+
+        ```python
+        >>> as_snake_case("MyCoolClass")
+        'my_cool_class'
+
+        >>> as_snake_case("getHTTPRequest")
+        'get_http_request'
+
+        >>> as_snake_case("ILikeCats")
+        'i_like_cats'
+
+        ```
+
+    2.  From "kebab-case".
+
+        ```python
+        >>> as_snake_case("more-itertools")
+        'more_itertools'
+
+        ```
+
+    3.  If `name` is already snake-case it should not be modified.
+
+        ```python
+        >>> as_snake_case("_already_snake")
+        '_already_snake'
+
+        ```
+
+    4.  Besides "-", other punctuation is kept in place. In particular, the
+        `IDENTIFIER_SEPARATOR` "." carries through.
+
+        ```python
+        >>> as_snake_case("clavier.arg_par.ArgumentParser")
+        'clavier.arg_par.argument_parser'
+
+        ```
+
+        If you need something that can be used as an _identifier_ check out
+        `as_identifier`.
+    """
+    return reduce(
+        lambda name, sub: sub[0].sub(sub[1], name), _SNAKE_CASE_SUBS, name
+    ).lower()
+
+
+def as_kebab_case(
+    name: str,
+    *,
+    allow_leading_dash: bool = False,
+    allow_trailing_dash: bool = False,
+) -> str:
+    """
+    ##### Examples #####
+
+    ```python
+    >>> as_kebab_case("cat_sprayer")
+    'cat-sprayer'
+
+    >>> as_kebab_case("_my_name")
+    'my-name'
+
+    ```
+    """
+
+    kebabbed = as_snake_case(name).replace("_", "-")
+    if not allow_leading_dash:
+        kebabbed = kebabbed.lstrip("-")
+    if not allow_trailing_dash:
+        kebabbed = kebabbed.rstrip("-")
+    return kebabbed
+
+
+def is_identifier_path(name: str) -> bool:
+    """Return `True` if `name` contains a sequence of _identifiers_ (per
+    `str.isidentifier`) seperator by the `IDENTIFIER_SEPERATOR` ".", as used in
+    Python module names.
+
+    ##### 🏗 Examples #####
+
+    1.  You know what these generally look like. Each segment needs to be a
+        legal variable name.
+
+        ```python
+        >>> is_identifier_path("clavier.etc.txt")
+        True
+
+        >>> is_identifier_path("more-itertools")
+        False
+
+        ```
+
+    2.  The special "dunder" string attributes `__name__`, `__module__`,
+        `__package__`, etc. should always be _identifier paths_.
+
+        ```python
+        >>> is_identifier_path(__name__)
+        True
+
+        >>> is_identifier_path(is_identifier_path.__module__)
+        True
+
+        >>> is_identifier_path(__package__)
+        True
+
+        ```
+    """
+    return all(id.isidentifier() for id in name.split(IDENTIFIER_SEPERATOR))
+
+
+def as_identifier(name: str) -> str:
+    id = as_snake_case(name).replace(".", "_")
+    if not id.isidentifier():
+        raise ValueError(f"can't convert to identifier: {name!r}")
+    return id
+
+
+def as_env_name(name: str) -> str:
+    """
+    ##### Examples #####
+
+    ```python
+    >>> as_env_name("clavier.etc.txt")
+    'CLAVIER_ETC_TXT'
+
+    >>> as_env_name("[[a/b/c?]]")
+    'A_B_C'
+
+    >>> as_env_name("_CLAVIER_INTERNAL")
+    '_CLAVIER_INTERNAL'
+
+    >>> as_env_name("?^%!$@%^$!")
+    Traceback (most recent call last):
+        ...
+    ValueError: no usable characters in `name`;
+        converted '?^%!$@%^$!' -> ''
+
+    >>> as_env_name("?^%!$___@%^$!")
+    Traceback (most recent call last):
+        ...
+    ValueError: no usable characters in `name`;
+        converted '?^%!$___@%^$!' -> '___'
+
+    ```
+    """
+    env_name = reduce(
+        lambda name, sub: sub[0].sub(sub[1], name), _ENV_NAME_SUBS, name
+    ).upper()
+
+    if env_name == "" or set(env_name) == {"_"}:
+        raise ValueError(
+            "no usable characters in `name`; "
+            f"converted {name!r} -> {env_name!r}"
+        )
+
+    return env_name
+
 
 def squish(string: str) -> str:
     """
@@ -68,7 +282,7 @@ def squish(string: str) -> str:
     can't really use it if you need to preserve whitespace in values or
     whatever.
 
-    ##### Examples #####
+    ##### 🏗 Examples #####
 
     ```python
 
@@ -153,7 +367,7 @@ def join(
     at some point, and fixed it at another, and wished it was there more times
     than I'd like to admit, so here it is, may it be remembered and used.
 
-    ##### Examples #####
+    ##### 🏗 Examples #####
 
     1.  Common use case.
 

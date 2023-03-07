@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 import asyncio
+from dataclasses import dataclass
+import os
 from typing import (
     Any,
     NamedTuple,
@@ -9,6 +11,7 @@ from typing import (
     ParamSpec,
     Sequence,
     TypeVar,
+    cast,
 )
 from pathlib import Path
 import argparse
@@ -47,7 +50,11 @@ error_context = etc.ctx.ContextVarManager(
 
 class App:
     """
-    Top-level object for a Calvier application.
+    Top-level object for a Calvier application. In general they accept command
+    line arguments (_argv_) and execute commands, returning results.
+
+    In the network server metaphor, this is the _app_ or _server_ that accepts
+    _requests_ and returns _responses_.
 
     This used to be called "Sesh" for "session", but it kept feeling more
     natural as the package and documentation evolved to refer to it as the "app",
@@ -61,23 +68,34 @@ class App:
 
     _log = splatlog.LoggerProperty()
 
-    _pkg_name: str
+    _name: str
     _parser: ArgumentParser
     _args: argparse.Namespace | None = None
     _init_cmds: Any
     _context: Context
+    _is_server: bool = False
 
     def __init__(
         self,
-        pkg_name: str,
+        name: str,
         description: str | Path,
         cmds: Any,
         parser: ArgumentParser | None = None,
-        prog_name: str | None = None,
         autocomplete: bool = True,
         setup_logging: bool = True,
     ):
-        self._pkg_name = pkg_name
+        """
+        Construct a Clavier application instance.
+
+        ##### Parameters #####
+
+        -   `name` — The name of the application, which is generally used as the
+            name of of the executable to invoke it, and generally the name of
+            the
+
+        """
+
+        self._name = name
         self.description = description
         self._init_cmds = cmds
         self._context = cfg.current.create_derived_context(name="session")
@@ -90,7 +108,7 @@ class App:
                 self.description,
                 self.init_cmds,
                 autocomplete=autocomplete,
-                prog=pkg_name if prog_name is None else prog_name,
+                prog=name,
                 settings=self.get_parser_settings(),
             )
         else:
@@ -103,8 +121,8 @@ class App:
         )
 
     @property
-    def pkg_name(self) -> str:
-        return self._pkg_name
+    def name(self) -> str:
+        return self._name
 
     @property
     def args(self):
@@ -129,7 +147,7 @@ class App:
             raise err.InternalError("Failed to get target") from error
 
     def get_app_setting_key(self, name: str, v_type: type[T]) -> cfg.Key[T]:
-        return cfg.Key(self.pkg_name, name, v_type=v_type)
+        return cfg.Key(self.name, name, v_type=v_type)
 
     def get_lib_setting_key(self, name: str, v_type: type[T]) -> cfg.Key[T]:
         return cfg.Key(cfg.SELF_ROOT_KEY, name, v_type=v_type)
@@ -189,7 +207,7 @@ class App:
         splatlog.setup(
             console=console,
             verbosity_levels={
-                self.pkg_name: (
+                self.name: (
                     (0, splatlog.WARNING),
                     (1, splatlog.INFO),
                     (2, splatlog.DEBUG),
@@ -331,7 +349,9 @@ class App:
                 )
 
             case err.ReplaceProcess():
-                raise
+                if self._is_server:
+                    raise
+                self._replace_process(error)
 
             case SystemExit():
                 if not expect_system_exit:
@@ -360,6 +380,30 @@ class App:
                         context_message,
                     )
                 )
+
+    def _replace_process(self, rep_proc: err.ReplaceProcess) -> NoReturn:
+        if rep_proc.cwd is not None:
+            os.chdir(rep_proc.cwd)
+
+        # NOTE  I _think_ — from poor-ass memory — that it was difficult
+        #       to find examples of how to use these, and that this
+        match (rep_proc.env, rep_proc.is_abs_path):
+            case (None, True):
+                os.execv(rep_proc.program, rep_proc.cmd)
+            case (None, False):
+                os.execvp(rep_proc.process_name, rep_proc.cmd)
+            case (env, True):
+                os.execve(
+                    rep_proc.program, rep_proc.cmd, cast(dict[str, str], env)
+                )
+            case (env, False):
+                os.execvpe(
+                    rep_proc.process_name,
+                    rep_proc.cmd,
+                    cast(dict[str, str], env),
+                )
+
+        assert False, "unreachable"
 
     def execute(self, argv: Sequence[str] | None = None) -> int:
         return self._context.run(self._execute, argv)

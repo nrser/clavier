@@ -1,5 +1,8 @@
+import os
 from pathlib import Path
 from typing import Any, Mapping
+
+from .etc.type import ExecEnv
 
 from . import etc
 
@@ -92,20 +95,33 @@ class ReplaceProcess(BaseException):
     telling it to replace itself.
     """
 
-    program: str
-    args: list[str] | None
+    cmd: list[bytes | str]
     cwd: str | None
-    env: dict[str, str] | None
+    env: Mapping[str, str] | None
 
     def __init__(
         self,
-        program: str,
-        args: list[str] | None,
+        cmd: list[bytes | str],
         cwd: str | None,
-        env: dict[str, str] | None,
+        env: Mapping[str, str] | None,
     ):
         super().__init__()
-        self.program = program
-        self.args = args
+        self.cmd = cmd
         self.cwd = cwd
         self.env = env
+
+    @property
+    def is_abs_path(self) -> bool:
+        return os.path.isabs(self.program)
+
+    @property
+    def program(self) -> bytes | str:
+        return self.cmd[0]
+
+    @property
+    def process_name(self) -> str:
+        return os.path.basename(str(self.program))
+
+    @property
+    def args(self) -> list[bytes | str]:
+        return self.cmd[1:]

@@ -23,6 +23,8 @@ from typing import (
 
 import splatlog
 
+from .etc.type import ENV, ExecEnv, StrPath
+
 from . import cfg, etc, err
 from .io import OUT, ERR, fmt, fmt_cmd
 from .etc.ins import accepts_kwd
@@ -91,6 +93,7 @@ class CommandFunction(Protocol[TOpts_contra, TReturn_co]):
         self,
         *args: object,
         cwd: _Path | None = None,
+        env: Mapping[str, str] | None = None,
         opts_long_prefix: CfgKwd[OptsLongPrefix] = OPTS_LONG_PREFIX_DEFAULT,
         opts_sort: CfgKwd[bool] = OPTS_SORT_DEFAULT,
         opts_style: CfgKwd[OptsStyle] = OPTS_STYLE_DEFAULT,
@@ -483,8 +486,8 @@ def test(*args, **kwds) -> bool:
 @command_function
 def replace(
     cmd: list[bytes | str],
-    cwd: Path | None = None,
-    env: Mapping | None = None,
+    cwd: StrPath | None = None,
+    env: Mapping[str, str] | None = None,
     **opts,  # Unused
 ) -> NoReturn:
     """Replace the current process with a new command.
@@ -504,9 +507,6 @@ def replace(
     if len(cmd) == 0:
         raise ValueError("`cmd` can not be empty; ")
 
-    # TODO  Arg must be string, this is prob not the right thing to do...
-    proc_name = basename(str(cmd[0]))
-
     _LOG.debug(
         "Replacing current process with system command...",
         cmd=fmt_cmd(cmd),
@@ -514,12 +514,10 @@ def replace(
         cwd=cwd,
     )
 
-    program, *args = cmd
     raise err.ReplaceProcess(
-        program=str(program),
-        args=[str(arg) for arg in args],
-        cwd=None if cwd is None else str(cwd),
-        env=None if env is None else {str(k): str(v) for k, v in env.items()},
+        cmd=cmd,
+        cwd=None if cwd is None else os.fsdecode(cwd),
+        env=env,
     )
 
     # if cwd is not None:

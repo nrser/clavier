@@ -213,6 +213,8 @@ class Server(ForkingMixIn, UnixStreamServer):
                 self._cached_app = config.get_app()
             except:
                 self._log.exception("Failed to create cached session")
+            else:
+                self._cached_app._is_server = True
 
         self._watch_files_stop_event = threading.Event()
         self._files_changed_event = threading.Event()
@@ -249,7 +251,9 @@ class Server(ForkingMixIn, UnixStreamServer):
     def get_app(self) -> App:
         if app := self._cached_app:
             return app
-        return self._config.get_app()
+        app = self._config.get_app()
+        app._is_server = True
+        return app
 
     def _handle_terminate(
         self, signal_number: int, stack_frame: FrameType | None
