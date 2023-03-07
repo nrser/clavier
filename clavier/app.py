@@ -1,8 +1,7 @@
-"""The `Sesh` class."""
+"""The `App` class."""
 
 from __future__ import annotations
 import asyncio
-from dataclasses import dataclass, field
 from typing import (
     Any,
     NamedTuple,
@@ -20,7 +19,6 @@ import signal
 
 import splatlog
 from rich.console import Console
-from rich.repr import RichReprResult
 
 from . import err, io, cfg, etc
 from .arg_par import ArgumentParser
@@ -47,9 +45,18 @@ error_context = etc.ctx.ContextVarManager(
 )
 
 
-class Sesh:
+class App:
     """
-    A CLI app session
+    Top-level object for a Calvier application.
+
+    This used to be called "Sesh" for "session", but it kept feeling more
+    natural as the package and documentation evolved to refer to it as the "app",
+    so it was renamed.
+
+    As a piece of such heritage, there _should_ be nothing fundamentally
+    stopping you from instantiating multiple of 'em and running them
+    simultaneously, though this doesn't seems to be a use case that really comes
+    up outside of testing, and I can't say it's well tested.
     """
 
     _log = splatlog.LoggerProperty()
@@ -61,7 +68,7 @@ class Sesh:
     _context: Context
 
     def __init__(
-        self: Sesh,
+        self,
         pkg_name: str,
         description: str | Path,
         cmds: Any,
@@ -91,7 +98,9 @@ class Sesh:
 
     @property
     def _splatlog_self_(self) -> Any:
-        return splatlog.lib.rich.REPR_HIGHLIGHTER(f"<Sesh {self._parser.prog}>")
+        return splatlog.lib.rich.REPR_HIGHLIGHTER(
+            f"<{self.__class__.__qualname__} {self._parser.prog}>"
+        )
 
     @property
     def pkg_name(self) -> str:
@@ -166,9 +175,7 @@ class Sesh:
         key = self.get_app_setting_key(name, Any)
         return etc.iter.find(lambda s: s.key == key, self.get_parser_settings())
 
-    def setup_logging(
-        self, verbosity: None | splatlog.Verbosity = None
-    ) -> Sesh:
+    def setup_logging(self, verbosity: None | splatlog.Verbosity = None) -> App:
         """This has really become "setup logging"."""
         if verbosity is None:
             verbosity = self.get_setting("verbosity", splatlog.Verbosity)
@@ -257,7 +264,7 @@ class Sesh:
 
             except BaseException as error:
                 # Check if we were doing our own view rendering
-                if isinstance(view, io.views.SeshView):
+                if isinstance(view, io.views.AppView):
                     # Ok, we were. In this case we do **not** want to go back
                     # in to `handle_error` because we might cause an infinite
                     # loop.
@@ -324,7 +331,6 @@ class Sesh:
                 )
 
             case err.ReplaceProcess():
-                self._log.debug("HERE!!!")
                 raise
 
             case SystemExit():
@@ -348,7 +354,7 @@ class Sesh:
 
             case _:
                 return self._render_view(
-                    io.views.SeshErrorView(
+                    io.views.AppErrorView(
                         self,
                         error,
                         context_message,

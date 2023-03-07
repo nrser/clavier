@@ -10,29 +10,29 @@ from splatlog.json.default_handlers import TRACEBACK_HANDLER
 
 from clavier import etc
 
-from .sesh_view import SeshView
+from .app_view import AppView
 from ..io_helpers import as_traceback, error_panel
 from ..io_consts import OUT, ERR, NEWLINE
 
 if TYPE_CHECKING:
-    from clavier.sesh import Sesh
+    from clavier.app import App
 
 TError = TypeVar("TError", bound=BaseException)
 
 
 @dataclass(frozen=True)
 class RunErrorViewData(Generic[TError]):
-    sesh: "Sesh"
+    app: "App"
     error: TError
     context: str | None
 
 
-class SeshErrorView(SeshView[RunErrorViewData[TError]]):
+class AppErrorView(AppView[RunErrorViewData[TError]]):
     is_backtracing: bool
 
     def __init__(
         self,
-        sesh: "Sesh",
+        app: "App",
         error: TError,
         context: str | None,
         exit_status: int = 1,
@@ -41,7 +41,7 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
     ):
         super().__init__(
             RunErrorViewData(
-                sesh=sesh,
+                app=app,
                 error=error,
                 context=context,
             ),
@@ -50,7 +50,7 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
             err=err,
         )
 
-        self.is_backtracing = sesh.is_backtracing()
+        self.is_backtracing = app.is_backtracing()
 
     @property
     def error(self) -> TError:
@@ -62,10 +62,10 @@ class SeshErrorView(SeshView[RunErrorViewData[TError]]):
 
         opts = []
 
-        if setting := self.sesh.get_parser_setting("backtrace"):
+        if setting := self.app.get_parser_setting("backtrace"):
             opts.extend(setting.flags)
 
-        for f in (self.sesh.get_app_setting_key, self.sesh.get_lib_setting_key):
+        for f in (self.app.get_app_setting_key, self.app.get_lib_setting_key):
             opts.append(f("backtrace", bool).env_name + "=1")
 
         return "Show trace: " + " | ".join(opts)

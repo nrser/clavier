@@ -11,7 +11,7 @@ from types import MappingProxyType
 import tomli
 import splatlog
 
-from clavier import Sesh, cmd, sh, io, cfg, etc, err, arg_par
+from clavier import App, cmd, sh, io, cfg, etc, err, arg_par
 
 _LOG = splatlog.get_logger(__name__)
 
@@ -257,7 +257,7 @@ def build(
 
 def main(argv: Sequence[str] | None = None) -> int:
     name = __spec__.name
-    sesh = Sesh(
+    app = App(
         # Need to do this 'cause `__name__` is set to "__main__" when running
         # via `python -m clavier.srv.entrypoint`
         pkg_name=name,
@@ -271,7 +271,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     with cfg.changeset(io.rel, src=name) as rel:
         rel.to = Path.cwd()
 
-    return sesh.execute(argv)
+    return app.execute(argv)
 
 
 if __name__ == "__main__":

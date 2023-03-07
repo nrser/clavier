@@ -238,7 +238,7 @@ class RequestHandler(BaseRequestHandler):
         self._set_environment()
         self._start_signal_thread()
 
-        sesh = self.server.get_sesh()
+        app = self.server.get_app()
 
         if "_ARGCOMPLETE" in self.env:
             self._log.debug("Setting up argcomplete...")
@@ -248,13 +248,13 @@ class RequestHandler(BaseRequestHandler):
 
                 finder = argcomplete.CompletionFinder()
                 finder(
-                    sesh.parser,
+                    app.parser,
                     exit_method=sys.exit,
                     output_stream=output_stream,
                 )
 
         self._log.debug(f"Starting CLI...")
-        self._response.exit_status = sesh.execute()
+        self._response.exit_status = app.execute()
 
     def handle(self) -> None:
         t_start_ns = monotonic_ns()

@@ -18,7 +18,7 @@ class Req:
 
     |    HTTP    |                     Clavier                      |
     | ---------- | ------------------------------------------------ |
-    | app/server | `clavier.sesh.Sesh`                              |
+    | app/server | `clavier.app.App`                              |
     | route      | `clavier.arg_par.argument_parser.ArgumentParser` |
     | handler    | `clavier.arg_par.argument_parser.Target`         |
     | request    | `clavier.req.Req`                                |

@@ -5,7 +5,7 @@ from typing import Callable, Literal
 import builtins
 import logging
 
-from clavier.sesh import Sesh
+from clavier.app import App
 
 MAX_DATA_LENGTH = 65536
 DEFAULT_KILL_ATTEMPTS = 5
@@ -18,7 +18,7 @@ DEFAULT_KILL_WAIT_SCALAR = 0.1
 #
 INT_STRUCT = struct.Struct("i")
 
-GetSesh = Callable[[], Sesh]
+GetApp = Callable[[], App]
 
 
 @dataclass(frozen=True)
@@ -27,11 +27,11 @@ class Config:
 
     name: str
     work_dir: Path
-    get_sesh: GetSesh
+    get_app: GetApp
 
     # Optional fields
 
-    cache_sesh: bool = False
+    cache_app: bool = False
     server_log_level: int = logging.INFO
     terminate_attempts: int = 5
     terminate_backoff_base: float = 0.1

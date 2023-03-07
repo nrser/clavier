@@ -3,7 +3,7 @@ from pathlib import Path
 
 import splatlog
 
-from clavier import Sesh, etc
+from clavier import App, etc
 
 # NAME = __package__
 NAME = "clavex"
@@ -12,10 +12,10 @@ WORK_DIR = Path(__file__).parents[1]
 _LOG = splatlog.get_logger(__name__)
 
 
-def get_sesh() -> Sesh:
+def get_app() -> App:
     from . import cmd
 
-    return Sesh(
+    return App(
         pkg_name=NAME,
         description="Clavier example CLI",
         cmds=cmd,
@@ -32,14 +32,14 @@ def main():
             Config(
                 name=NAME,
                 work_dir=WORK_DIR,
-                get_sesh=get_sesh,
-                cache_sesh=True,
+                get_app=get_app,
+                cache_app=True,
                 server_log_level=logging.DEBUG,
                 server_log_width=80,
             )
         )
 
-    get_sesh().takeover()
+    get_app().takeover()
 
 
 if __name__ == "__main__":

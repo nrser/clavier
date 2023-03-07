@@ -12,7 +12,7 @@ import threading
 
 from rich.console import Console
 
-from clavier import io, sesh, cfg, req, etc
+from clavier import app, io, cfg, req, etc
 
 RunTask = asyncio.Task[int]
 RunFuture = asyncio.Future[int]
@@ -25,7 +25,7 @@ RunFuture = asyncio.Future[int]
 #     handle: asyncio.Handle
 
 
-class AsyncEmbeddedConsole(sesh.Sesh):
+class AsyncEmbeddedConsole(app.App):
     _signal_handlers: dict[int, Callable[[], object]]
     _out: Console
 
@@ -189,7 +189,7 @@ class AsyncEmbeddedConsole(sesh.Sesh):
             return self.handle_error(error)
 
     async def _handle_async(self, request: req.Req) -> int:
-        with sesh.error_context(
+        with app.error_context(
             f"executing {etc.txt.fmt(request.target)} (async)",
             expect_system_exit=True,
         ):

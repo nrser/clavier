@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.style import Style
 
-from clavier.sesh import Sesh
+from clavier.app import App
 from .config import Config, MAX_DATA_LENGTH
 from .request_handler import Request, RequestHandler
 from .watchable_module import WatchableModule
@@ -84,7 +84,7 @@ class Server(ForkingMixIn, UnixStreamServer):
         ol' double-fork process.
 
         I'm not sure about the name of this function... it mirrors
-        `Sesh.takeover`, but makes less sense in this case I think. I added it
+        `App.takeover`, but makes less sense in this case I think. I added it
         because I had a bug where I thought `create` was `typing.NoReturn`, but
         it wasn't.
         """
@@ -196,7 +196,7 @@ class Server(ForkingMixIn, UnixStreamServer):
 
     _config: Config
     _main_pid: int
-    _cached_sesh: Sesh | None = None
+    _cached_app: App | None = None
     _watch_modules: set[WatchableModule]
     _watch_files_stop_event: threading.Event
     _watch_files_thread: threading.Thread
@@ -208,9 +208,9 @@ class Server(ForkingMixIn, UnixStreamServer):
         self._config = config
         self._main_pid = os.getpid()
 
-        if config.cache_sesh is True:
+        if config.cache_app is True:
             try:
-                self._cached_sesh = config.get_sesh()
+                self._cached_app = config.get_app()
             except:
                 self._log.exception("Failed to create cached session")
 
@@ -246,10 +246,10 @@ class Server(ForkingMixIn, UnixStreamServer):
     def config(self) -> Config:
         return self._config
 
-    def get_sesh(self) -> Sesh:
-        if sesh := self._cached_sesh:
-            return sesh
-        return self._config.get_sesh()
+    def get_app(self) -> App:
+        if app := self._cached_app:
+            return app
+        return self._config.get_app()
 
     def _handle_terminate(
         self, signal_number: int, stack_frame: FrameType | None

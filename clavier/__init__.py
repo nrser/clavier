@@ -1,2 +1,2 @@
 from . import cfg
-from .sesh import Sesh
+from .app import App
