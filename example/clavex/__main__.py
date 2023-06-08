@@ -4,8 +4,9 @@ from pathlib import Path
 import splatlog
 
 from clavier import App, etc
+from clavier.name import Name
 
-NAME = __package__
+NAME = Name.of(__name__)
 WORK_DIR = Path(__file__).parents[1]
 
 _LOG = splatlog.get_logger(__name__)
